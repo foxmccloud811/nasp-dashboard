@@ -3,55 +3,81 @@
 <head>
   <title>NASP Coach App</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <style>
     body {
       background: #000;
       color: white;
       font-family: Arial;
-      padding: 15px;
+      padding: 12px;
     }
 
     textarea {
       width: 100%;
-      height: 150px;
+      height: 120px;
       margin-bottom: 10px;
-      font-size: 14px;
     }
 
     button {
       width: 100%;
-      padding: 15px;
+      padding: 14px;
       font-size: 18px;
       background: #6A0DAD;
       color: white;
       border: none;
       border-radius: 10px;
-      margin-bottom: 15px;
+      margin-bottom: 12px;
+    }
+
+    select {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      margin-bottom: 12px;
     }
 
     .card {
       background: #111;
-      padding: 15px;
+      padding: 12px;
       border-radius: 10px;
       margin-bottom: 10px;
     }
 
     .big {
-      font-size: 32px;
+      font-size: 28px;
       font-weight: bold;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    td {
+      padding: 6px;
+      border-bottom: 1px solid #333;
     }
   </style>
 </head>
+
 <body>
 
 <h2>🏹 NASP Coach Dashboard</h2>
 
-<textarea id="input" placeholder="Paste NASP score page here..."></textarea>
+<textarea id="input" placeholder="Paste NASP page here..."></textarea>
 <button onclick="process()">PROCESS</button>
 
+<select id="archerSelect"></select>
+
 <div class="card">
-  <div>Top Archer</div>
-  <div id="top" class="big">--</div>
+  <div>PR Score</div>
+  <div id="pr" class="big">--</div>
+</div>
+
+<div class="card">
+  <div>Trend</div>
+  <div id="trend">--</div>
 </div>
 
 <div class="card">
@@ -60,46 +86,103 @@
 </div>
 
 <div class="card">
-  <div>AI Insight</div>
+  <div>AI Coach Insight</div>
   <div id="insight">--</div>
 </div>
 
+<div class="card">
+  <div>Roster</div>
+  <table id="roster"></table>
+</div>
+
 <script>
+let data = {};
+
 function process() {
-  const text = document.getElementById("input").value.split("\n");
+  const lines = document.getElementById("input").value.split("\n");
 
-  let scores = [];
-  let teamScore = "";
+  data = {};
+  let teamScore = 0;
 
-  text.forEach(line => {
+  lines.forEach(line => {
     if (line.includes("Team Score")) {
-      teamScore = line.match(/\d+/)[0];
+      teamScore = parseInt(line.match(/\d+/)[0]);
     }
 
     if (/^\d{2,3}/.test(line)) {
       let parts = line.trim().split(/\s+/);
-      scores.push({
-        name: parts[2] + " " + parts[3],
-        score: parseInt(parts[0])
-      });
+
+      let name = parts[2] + " " + parts[3];
+      let score = parseInt(parts[0]);
+
+      if (!data[name]) data[name] = [];
+      data[name].push(score);
     }
   });
 
-  // Top archer
-  scores.sort((a,b)=>b.score-a.score);
-  document.getElementById("top").textContent = scores[0]?.name + " (" + scores[0]?.score + ")";
-
   document.getElementById("team").textContent = teamScore;
 
-  // AI Insight
-  let avg = scores.reduce((a,b)=>a+b.score,0)/scores.length;
+  buildDropdown();
+  buildRoster();
+  updateView();
+}
+
+function buildDropdown() {
+  const select = document.getElementById("archerSelect");
+  select.innerHTML = "";
+
+  Object.keys(data).forEach(name => {
+    let opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+
+  select.onchange = updateView;
+}
+
+function updateView() {
+  const name = document.getElementById("archerSelect").value;
+  const scores = data[name] || [];
+
+  if (scores.length === 0) return;
+
+  let pr = Math.max(...scores);
+  document.getElementById("pr").textContent = pr;
+
+  if (scores.length >= 2) {
+    let diff = scores[scores.length-1] - scores[scores.length-2];
+    document.getElementById("trend").textContent =
+      diff > 0 ? "⬆ Improving" :
+      diff < 0 ? "⬇ Dropping" : "➡ Steady";
+  }
+
+  let avg = scores.reduce((a,b)=>a+b,0)/scores.length;
 
   let insight = "";
-  if (avg > 260) insight = "🔥 Elite Team Performance";
-  else if (avg > 230) insight = "💪 Strong Team";
-  else insight = "🎯 Developing Team";
+  if (avg > 260) insight = "🔥 State-level shooter";
+  else if (avg > 240) insight = "💪 Strong varsity";
+  else insight = "🎯 Developing";
 
   document.getElementById("insight").textContent = insight;
+}
+
+function buildRoster() {
+  let table = document.getElementById("roster");
+  table.innerHTML = "";
+
+  let entries = Object.entries(data).map(([name, scores]) => {
+    let avg = scores.reduce((a,b)=>a+b,0)/scores.length;
+    return {name, avg};
+  });
+
+  entries.sort((a,b)=>b.avg-a.avg);
+
+  entries.forEach(e => {
+    let row = document.createElement("tr");
+    row.innerHTML = `<td>${e.name}</td><td>${e.avg.toFixed(1)}</td>`;
+    table.appendChild(row);
+  });
 }
 </script>
 
