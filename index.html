@@ -11,18 +11,12 @@
 <style>
 body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
 .container{padding:14px; max-width:1200px; margin:auto;}
+button{width:100%;padding:10px;margin-bottom:10px;background:#6A0DAD;color:white;border:none;border-radius:8px;}
 textarea{width:100%;height:100px;margin-bottom:10px;}
-button{width:100%;padding:12px;margin-bottom:10px;background:#6A0DAD;color:white;border:none;border-radius:8px;}
-.card{background:#111;padding:16px;border-radius:16px;box-shadow:0 0 12px rgba(106,13,173,0.25);}
-h2{color:#c084fc;}
-h3{margin-bottom:8px;}
-select{width:100%;padding:8px;margin-bottom:10px;background:#000;color:white;border:1px solid #333;}
-table{width:100%;border-collapse:collapse;}
-td,th{padding:8px;border-bottom:1px solid #333;text-align:left;}
-th{color:#aaa;font-weight:600;}
+.card{background:#111;padding:16px;border-radius:16px;margin-bottom:12px;}
 .male{color:#4da6ff;}
 .female{color:#ff66cc;}
-.grid{display:grid;grid-template-columns:1fr;gap:14px;}
+.grid{display:grid;grid-template-columns:1fr;gap:12px;}
 @media(min-width:900px){.grid{grid-template-columns:1fr 1fr;}}
 </style>
 </head>
@@ -30,7 +24,7 @@ th{color:#aaa;font-weight:600;}
 <body>
 <div class="container">
 
-<h2>🏹 NASP Elite Dashboard</h2>
+<h2>🏹 Recruit-Level NASP Dashboard</h2>
 
 <!-- LOGIN -->
 <div id="loginCard" class="card">
@@ -39,21 +33,18 @@ th{color:#aaa;font-weight:600;}
 <button onclick="login()">Coach Login</button>
 </div>
 
-<!-- ADMIN -->
 <div id="adminPanel" style="display:none;">
-<textarea id="input" placeholder="Paste NASP page here"></textarea>
-<button onclick="process()">ADD TO SEASON</button>
-<button onclick="resetData()">RESET SEASON</button>
+<textarea id="input" placeholder="Paste NASP page"></textarea>
+<button onclick="process()">ADD</button>
+<button onclick="resetData()">RESET</button>
 </div>
 
 <div class="grid">
 
 <div class="card">
-<h3>Archer Performance</h3>
+<h3>Archer Profile</h3>
 <select id="archer"></select>
-<div>PR: <span id="pr"></span></div>
-<div>Avg: <span id="avg"></span></div>
-<div>10s: <span id="tens"></span></div>
+<div id="profile"></div>
 <canvas id="archerChart"></canvas>
 </div>
 
@@ -65,78 +56,64 @@ th{color:#aaa;font-weight:600;}
 </div>
 
 <div class="card">
-<h3>Top 12</h3>
-<label><input type="radio" name="mode" value="season" checked onchange="buildTop12()"> Season</label>
-<label><input type="radio" name="mode" value="event" onchange="buildTop12()"> Tournament</label>
-<div id="top12"></div>
+<h3>🏹 Optimal Lineup</h3>
+<div id="lineup"></div>
 </div>
 
 <div class="card">
-<h3>🚀 Most Improved</h3>
-<div id="improved"></div>
+<h3>📊 Coach Decision Panel</h3>
+<div id="decision"></div>
 </div>
 
 </div>
 
 <div class="card">
-<h3 id="rosterTitle">Roster</h3>
+<h3>Roster</h3>
 <table id="roster"></table>
-</div>
-
-<div class="card">
-<h3>Coach Insights</h3>
-<div id="insight"></div>
 </div>
 
 </div>
 
 <script>
 
-// 🔥 FIREBASE
+// Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
-  authDomain: "nasp-dashboard.firebaseapp.com",
-  projectId: "nasp-dashboard"
+  apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
+  authDomain:"nasp-dashboard.firebaseapp.com",
+  projectId:"nasp-dashboard"
 };
 firebase.initializeApp(firebaseConfig);
 
-const db = firebase.firestore();
-const auth = firebase.auth();
+const db=firebase.firestore();
+const auth=firebase.auth();
 
-let season = [];
-let aChart = null;
-let tChart = null;
+let season=[];
 
-// 🔐 LOGIN
+// LOGIN
 function login(){
-  auth.signInWithEmailAndPassword(email.value,password.value)
-  .catch(()=>alert("Login failed"));
+  auth.signInWithEmailAndPassword(email.value,password.value);
 }
 
-auth.onAuthStateChanged(user=>{
-  if(user){
+auth.onAuthStateChanged(u=>{
+  if(u){
     loginCard.style.display="none";
     adminPanel.style.display="block";
   }
 });
 
-// 🟣 PROCESS
+// PROCESS
 function process(){
   let lines=input.value.split("\n");
-
   let e={tournament:lines[0],teamScore:0,archers:{}};
 
   lines.forEach(l=>{
-    if(l.includes("Team Score")){
-      e.teamScore=parseInt(l.match(/\d+/)[0]);
-    }
+    if(l.includes("Team Score")) e.teamScore=parseInt(l.match(/\d+/)[0]);
 
     if(/^\d{2,3}/.test(l)){
       let p=l.replace("(T)","").split(/\s+/);
       let gi=p.findIndex(x=>x=="M"||x=="F");
-      if(gi===-1)return;
-
       let name=p.slice(2,gi-1).join(" ");
+
       e.archers[name]={score:+p[0],tens:+p[1],gender:p[gi]};
     }
   });
@@ -144,7 +121,7 @@ function process(){
   db.collection("season").add(e).then(loadData);
 }
 
-// 🟣 LOAD
+// LOAD
 function loadData(){
   db.collection("season").get().then(s=>{
     season=[];
@@ -153,7 +130,7 @@ function loadData(){
   });
 }
 
-// 🟣 BUILD
+// BUILD
 function build(){
 
   let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
@@ -162,191 +139,148 @@ function build(){
   tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
 
   archer.onchange=update;
-
-  tournament.onchange=()=>{
-    update();
-    buildRoster();
-    buildTop12();
-    drawTeamChart();
-  };
+  tournament.onchange=update;
 
   buildRoster();
-  buildTop12();
-  buildImproved();
+  buildLineup();
+  buildDecision();
   drawTeamChart();
   update();
 }
 
-// 🟣 UPDATE
+// PROFILE + INSIGHTS
 function update(){
 
   let name=archer.value;
 
-  let scores=[],tensArr=[],labels=[];
-
+  let scores=[],tens=[];
   season.forEach(e=>{
     if(e.archers[name]){
       scores.push(e.archers[name].score);
-      tensArr.push(e.archers[name].tens);
-      labels.push(e.tournament);
+      tens.push(e.archers[name].tens);
     }
   });
 
   if(!scores.length)return;
 
-  pr.innerText=Math.max(...scores);
-  avg.innerText=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-  tens.innerText=tensArr.reduce((a,b)=>a+b,0);
+  let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
+  let pr=Math.max(...scores);
 
-  drawArcherChart(labels,scores,tensArr);
-  drawInsights(name,scores);
+  let trend=scores.length>=3 ? scores.at(-1)-scores.at(-3):0;
+
+  let rating =
+    avg>=260?"⭐⭐⭐⭐⭐ Elite":
+    avg>=240?"⭐⭐⭐⭐ Strong":
+    avg>=220?"⭐⭐⭐ Developing":
+    avg>=200?"⭐⭐ Inconsistent":
+    "⭐ Needs Work";
+
+  profile.innerHTML=`
+  Avg: ${avg}<br>
+  PR: ${pr}<br>
+  Rating: ${rating}<br>
+  Trend: ${trend>5?"📈 Rising":trend<-5?"📉 Falling":"➡️ Stable"}
+  `;
+
+  drawArcherChart(scores,tens);
 }
 
-// 🟣 ARCHER CHART
-function drawArcherChart(labels,scores,tens){
+// ARCHER CHART
+let aChart=null;
+function drawArcherChart(scores,tens){
 
   if(aChart) aChart.destroy();
 
-  let pr=Math.max(...scores);
-
   aChart=new Chart(archerChart,{
     data:{
-      labels,
+      labels:scores.map((_,i)=>i+1),
       datasets:[
-        {
-          type:'line',
-          label:'Score',
-          data:scores,
-          borderColor:'#6A0DAD',
-          borderWidth:3,
-          pointRadius:scores.map(s=>s===pr?6:3),
-          pointBackgroundColor:scores.map(s=>s===pr?'gold':'#6A0DAD')
-        },
-        {
-          type:'bar',
-          label:'10s',
-          data:tens,
-          yAxisID:'y1',
-          backgroundColor:'white'
-        }
+        {type:'line',data:scores,borderColor:'#6A0DAD',tension:0.4},
+        {type:'bar',data:tens,yAxisID:'y1',backgroundColor:'white'}
       ]
     },
     options:{
-      responsive:true,
-      scales:{
-        y:{position:'left'},
-        y1:{position:'right',grid:{drawOnChartArea:false}}
-      }
+      scales:{y:{},y1:{position:'right'}}
     }
   });
 }
 
-// 🟣 TEAM CHART
+// TEAM
+let tChart=null;
 function drawTeamChart(){
 
   if(tChart) tChart.destroy();
 
   let labels=season.map(e=>e.tournament);
   let scores=season.map(e=>e.teamScore);
-  let max=Math.max(...scores);
 
   tChart=new Chart(teamChart,{
     type:'line',
-    data:{
-      labels,
-      datasets:[{
-        label:'Team Score',
-        data:scores,
-        borderColor:'#6A0DAD',
-        borderWidth:3,
-        pointRadius:scores.map(s=>s===max?6:3),
-        pointBackgroundColor:scores.map(s=>s===max?'gold':'#6A0DAD')
-      }]
-    }
+    data:{labels,datasets:[{data:scores,borderColor:'#6A0DAD'}]}
   });
 
-  drawTeamStats();
-}
+  let e=season[tournament.value];
+  if(e){
+    let avg=Math.round(Object.values(e.archers)
+      .reduce((a,b)=>a+b.score,0)/Object.keys(e.archers).length);
 
-// 🟣 TEAM STATS
-function drawTeamStats(){
-  let e=season[+tournament.value];
-  if(!e)return;
-
-  let avg=Math.round(Object.values(e.archers)
-    .reduce((a,b)=>a+b.score,0)/Object.keys(e.archers).length);
-
-  teamStats.innerHTML=`Score: ${e.teamScore}<br>Avg: ${avg}`;
-}
-
-// 🟣 TOP 12
-function buildTop12(){
-
-  if(!season.length)return;
-
-  let mode=document.querySelector('input[name="mode"]:checked').value;
-  let list=[];
-
-  if(mode==="season"){
-    let stats={};
-    season.forEach(e=>{
-      Object.entries(e.archers).forEach(([n,o])=>{
-        if(!stats[n])stats[n]=[];
-        stats[n].push(o.score);
-      });
-    });
-
-    list=Object.entries(stats).map(([n,s])=>{
-      return {name:n,val:Math.round(s.reduce((a,b)=>a+b)/s.length)};
-    });
-
-  } else {
-    let selected=season[+tournament.value];
-    if(!selected)return;
-
-    list=Object.entries(selected.archers).map(([n,o])=>{
-      return {name:n,val:o.score};
-    });
+    teamStats.innerHTML=`Score: ${e.teamScore}<br>Avg: ${avg}`;
   }
-
-  list.sort((a,b)=>b.val-a.val);
-
-  top12.innerHTML=list.slice(0,12)
-    .map((p,i)=>`${i+1}. ${p.name} - ${p.val}`)
-    .join("<br>");
 }
 
-// 🟣 MOST IMPROVED
-function buildImproved(){
+// LINEUP
+function buildLineup(){
 
-  let list=[];
+  let stats={};
+
+  season.forEach(e=>{
+    Object.entries(e.archers).forEach(([n,o])=>{
+      if(!stats[n])stats[n]=[];
+      stats[n].push(o.score);
+    });
+  });
+
+  let list=Object.entries(stats).map(([n,s])=>{
+    return {name:n,avg:s.reduce((a,b)=>a+b)/s.length};
+  }).sort((a,b)=>b.avg-a.avg);
+
+  let top=list.slice(0,12);
+  let bench=list.slice(12,16);
+
+  let total=Math.round(top.reduce((a,b)=>a+b.avg,0));
+  let gap=Math.round(total - bench.reduce((a,b)=>a+b.avg,0));
+
+  lineup.innerHTML=`
+  Projected: ${total}<br>
+  Depth Gap: ${gap}<br><br>
+  ${top.map(p=>p.name).join("<br>")}
+  `;
+}
+
+// DECISION PANEL
+function buildDecision(){
+
+  let msg="";
 
   season.forEach((e,i)=>{
     if(i===0)return;
 
     Object.entries(e.archers).forEach(([n,o])=>{
       let prev=season[i-1].archers[n]?.score;
-      if(prev){
-        list.push({name:n,change:o.score-prev});
+      if(prev && o.score-prev>15){
+        msg+=`${n} trending UP<br>`;
+      }
+      if(prev && prev-o.score>15){
+        msg+=`${n} trending DOWN<br>`;
       }
     });
   });
 
-  list.sort((a,b)=>b.change-a.change);
-
-  improved.innerHTML=list.slice(0,5)
-    .map(p=>`${p.name}: +${p.change}`)
-    .join("<br>");
+  decision.innerHTML=msg || "No major changes";
 }
 
-// 🟣 ROSTER
+// ROSTER
 function buildRoster(){
-
-  if(!season.length)return;
-
-  let selected=season[+tournament.value];
-
-  rosterTitle.innerText=`Roster - ${selected?.tournament || ""}`;
 
   let stats={};
 
@@ -358,62 +292,20 @@ function buildRoster(){
   });
 
   let rows=Object.entries(stats).map(([n,a])=>{
-
     let scores=a.map(x=>x.score);
-    let avg=Math.round(scores.reduce((x,y)=>x+y)/scores.length);
-    let pr=Math.max(...scores);
-    let tens=a.reduce((x,y)=>x+y.tens,0);
-
-    let variance=scores.reduce((x,y)=>x+(y-avg)**2,0)/scores.length;
-    let consistency=Math.min(10,Math.round(variance/10));
-
-    let current=selected?.archers[n]?.score ?? "-";
-
-    return {n,avg,pr,tens,consistency,current,gender:a[0].gender};
-
+    return {
+      n,
+      avg:Math.round(scores.reduce((x,y)=>x+y)/scores.length),
+      pr:Math.max(...scores)
+    };
   }).sort((a,b)=>b.avg-a.avg);
 
-  roster.innerHTML=`
-  <tr>
-    <th>Name</th>
-    <th>${selected?.tournament || "Score"}</th>
-    <th>Avg</th>
-    <th>PR</th>
-    <th>10s</th>
-    <th>Cons</th>
-  </tr>
-  ` + rows.map(r=>`
-  <tr>
-    <td class="${r.gender==='M'?'male':'female'}">${r.n}</td>
-    <td style="text-align:center">${r.current}</td>
-    <td>${r.avg}</td>
-    <td>${r.pr}</td>
-    <td>${r.tens}</td>
-    <td>${r.consistency}</td>
-  </tr>`).join("");
+  roster.innerHTML=rows.map(r=>`
+  <tr><td>${r.n}</td><td>${r.avg}</td><td>${r.pr}</td></tr>
+  `).join("");
 }
 
-// 🟣 INSIGHTS
-function drawInsights(name,scores){
-  let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-  let last=scores.at(-1);
-  let prev=scores.length>1?scores.at(-2):last;
-
-  let msg=`${name} avg ${avg}. `;
-
-  msg+= last>avg ? "Above average. " : "Below average. ";
-
-  let diff=last-prev;
-
-  if(diff>10) msg+="Major improvement.";
-  else if(diff>5) msg+="Improving.";
-  else if(diff<-10) msg+="Large drop.";
-  else msg+="Stable performance.";
-
-  insight.innerText=msg;
-}
-
-// 🔥 START
+// START
 loadData();
 
 </script>
