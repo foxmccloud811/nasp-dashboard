@@ -69,7 +69,8 @@ function update(){
 
   pr.innerText = Math.max(...scores);
   avg.innerText = Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-  tens.innerText = tens.reduce((a,b)=>a+b);
+  let totalTens = tens.reduce((a,b)=>a+b,0);
+document.getElementById("tens").innerText = totalTens;
 
   let trend = scores.length>1 ? scores.at(-1)-scores.at(-2):0;
   predict.innerText = Math.round(scores.at(-1)+trend);
