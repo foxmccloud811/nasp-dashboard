@@ -5,84 +5,83 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body {background:#000;color:white;font-family:Arial;padding:10px;}
-textarea{width:100%;height:120px;}
-button{width:100%;padding:12px;margin:5px 0;background:#6A0DAD;color:white;border:none;border-radius:8px;}
-select{width:100%;padding:8px;margin:5px 0;}
-.card{background:#111;padding:10px;border-radius:10px;margin:10px 0;}
-.male{color:#4da6ff;}
-.female{color:#ff66cc;}
-table{width:100%;}
-td{padding:5px;border-bottom:1px solid #333;}
-.big{font-size:28px;font-weight:bold;}
+body{background:#000;color:white;font-family:Arial;margin:0}
+.tab{display:flex}
+.tab button{flex:1;padding:12px;background:#111;color:white;border:none}
+.active{background:#6A0DAD}
+.section{display:none;padding:10px}
+.show{display:block}
+.card{background:#111;padding:10px;margin:10px;border-radius:10px}
+.male{color:#4da6ff}
+.female{color:#ff66cc}
+table{width:100%} td{padding:6px;border-bottom:1px solid #333}
 </style>
 </head>
 
 <body>
 
-<h2>🏹 NASP ELITE</h2>
+<div class="tab">
+<button onclick="openTab(0)">Dashboard</button>
+<button onclick="openTab(1)">Roster</button>
+<button onclick="openTab(2)">Team</button>
+<button onclick="openTab(3)">Insights</button>
+</div>
+
+<div class="section show" id="tab0">
 
 <textarea id="input"></textarea>
-<button onclick="process()">ADD TO SEASON</button>
+<button onclick="process()">ADD</button>
 <button onclick="resetData()">RESET</button>
 
-<select id="tournamentSelect"></select>
-<select id="archerSelect"></select>
+<select id="archer"></select>
 
-<div class="card">
-<div>PR</div>
-<div id="pr" class="big"></div>
-<div>Average: <span id="avg"></span></div>
-<div>10s: <span id="tens"></span></div>
+<div class="card">PR: <span id="pr"></span></div>
+<div class="card">Avg: <span id="avg"></span></div>
+<div class="card">Prediction: <span id="predict"></span></div>
+
+<canvas id="chart"></canvas>
+
 </div>
 
-<div class="card"><canvas id="chart"></canvas></div>
+<div class="section" id="tab1">
+<div class="card"><table id="roster"></table></div>
+</div>
+
+<div class="section" id="tab2">
 <div class="card"><canvas id="teamChart"></canvas></div>
-
-<div class="card">
-<div>Team Stats</div>
-<div id="teamStats"></div>
+<div class="card" id="teamStats"></div>
 </div>
 
-<div class="card">
-<div>Roster</div>
-<table id="roster"></table>
-</div>
-
-<div class="card">
-<div>AI Coach</div>
-<div id="insight"></div>
+<div class="section" id="tab3">
+<div class="card" id="insight"></div>
+<div class="card" id="top12"></div>
+<div class="card" id="improved"></div>
 </div>
 
 <script>
-let season = JSON.parse(localStorage.getItem("season")||"[]");
+let season=JSON.parse(localStorage.getItem("season")||"[]");
+
+function openTab(i){
+document.querySelectorAll(".section").forEach(s=>s.classList.remove("show"));
+document.getElementById("tab"+i).classList.add("show");
+}
 
 function process(){
 let lines=input.value.split("\n");
-let event={tournament:"",teamScore:0,archers:{}};
+let e={tournament:lines[0],teamScore:0,archers:{}};
 
-// tournament = first line
-event.tournament=lines.find(l=>l.trim().length>5)||"Event";
+lines.forEach(l=>{
+if(l.includes("Team Score")) e.teamScore=parseInt(l.match(/\d+/)[0]);
 
-lines.forEach(line=>{
-if(line.includes("Team Score")) event.teamScore=parseInt(line.match(/\d+/)[0]);
-
-if(/^\d{2,3}/.test(line)){
-let clean=line.replace("(T)","");
-let p=clean.trim().split(/\s+/);
-
-let score=parseInt(p[0]);
-let tens=parseInt(p[1]);
-
+if(/^\d{2,3}/.test(l)){
+let p=l.replace("(T)","").split(/\s+/);
 let gi=p.findIndex(x=>x=="M"||x=="F");
 let name=p.slice(2,gi-1).join(" ");
-let gender=p[gi];
-
-event.archers[name]={score,tens,gender};
+e.archers[name]={score:+p[0],tens:+p[1],gender:p[gi]};
 }
 });
 
-season.push(event);
+season.push(e);
 localStorage.setItem("season",JSON.stringify(season));
 build();
 }
@@ -90,30 +89,22 @@ build();
 function resetData(){localStorage.clear();location.reload();}
 
 function build(){
-let archers=new Set();
-season.forEach(e=>Object.keys(e.archers).forEach(a=>archers.add(a)));
-
-tournamentSelect.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
-
-archerSelect.innerHTML=[...archers].map(a=>`<option>${a}</option>`).join("");
-
-tournamentSelect.onchange=update;
-archerSelect.onchange=update;
+let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))];
+archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
 
 buildRoster();
-buildTeamChart();
+buildTeam();
+buildInsights();
 update();
 }
 
 function update(){
-let name=archerSelect.value;
-
-let scores=[],tens=[],labels=[];
+let name=archer.value;
+let scores=[],labels=[];
 
 season.forEach(e=>{
 if(e.archers[name]){
 scores.push(e.archers[name].score);
-tens.push(e.archers[name].tens);
 labels.push(e.tournament);
 }
 });
@@ -122,33 +113,13 @@ if(!scores.length)return;
 
 pr.innerText=Math.max(...scores);
 avg.innerText=(scores.reduce((a,b)=>a+b)/scores.length).toFixed(1);
-tens.innerText=tens.reduce((a,b)=>a+b,0);
 
-buildChart(labels,scores,tens);
-buildInsights(name,scores);
-buildTeamStats();
-}
+// prediction
+let trend=scores.length>1 ? scores.at(-1)-scores.at(-2):0;
+predict.innerText=Math.round(scores.at(-1)+trend);
 
-function buildChart(labels,scores,tens){
-if(window.c) c.destroy();
-c=new Chart(chart,{
-data:{
-labels,
-datasets:[
-{type:'line',label:'Score',data:scores,borderWidth:3},
-{type:'bar',label:'10s',data:tens}
-]}});
-}
-
-function buildTeamChart(){
-if(window.tc) tc.destroy();
-let labels=season.map(e=>e.tournament);
-let scores=season.map(e=>e.teamScore);
-
-tc=new Chart(teamChart,{
-type:'line',
-data:{labels,datasets:[{label:'Team',data:scores,borderWidth:3}]}
-});
+if(window.c)c.destroy();
+c=new Chart(chart,{type:'line',data:{labels,datasets:[{data:scores}]}})
 }
 
 function buildRoster(){
@@ -157,52 +128,59 @@ let stats={};
 season.forEach(e=>{
 Object.entries(e.archers).forEach(([n,o])=>{
 if(!stats[n])stats[n]=[];
-stats[n].push(o);
+stats[n].push(o.score);
 });
 });
 
-let rows=Object.entries(stats).map(([n,a])=>{
-return{
-name:n,
-avg:a.reduce((x,y)=>x+y.score,0)/a.length,
-pr:Math.max(...a.map(x=>x.score)),
-tens:a.reduce((x,y)=>x+y.tens,0),
-gender:a[0].gender
-};
+let rows=Object.entries(stats).map(([n,s])=>{
+let avg=s.reduce((a,b)=>a+b)/s.length;
+let pr=Math.max(...s);
+let variance=s.reduce((a,b)=>a+(b-avg)**2,0)/s.length;
+
+return {n,avg,pr,consistency:(100-variance).toFixed(0)};
 }).sort((a,b)=>b.avg-a.avg);
 
-roster.innerHTML=rows.map(r=>
-`<tr>
-<td class="${r.gender=='M'?'male':'female'}">${r.name}</td>
-<td>${r.avg.toFixed(1)}</td>
-<td>${r.pr}</td>
-<td>${r.tens}</td>
-</tr>`).join("");
+roster.innerHTML=rows.map(r=>`
+<tr><td>${r.n}</td><td>${r.avg.toFixed(1)}</td><td>${r.pr}</td><td>${r.consistency}</td></tr>`).join("");
 }
 
-function buildTeamStats(){
-let last=season[season.length-1];
-let avg=(Object.values(last.archers).reduce((a,b)=>a+b.score,0)/Object.keys(last.archers).length).toFixed(1);
+function buildTeam(){
+let labels=season.map(e=>e.tournament);
+let scores=season.map(e=>e.teamScore);
+
+if(window.tc)tc.destroy();
+tc=new Chart(teamChart,{type:'line',data:{labels,datasets:[{data:scores}]}});
 
 teamStats.innerHTML=`
-Score: ${last.teamScore}<br>
-Avg: ${avg}<br>
-PR: ${Math.max(...season.map(e=>e.teamScore))}
+PR: ${Math.max(...scores)}<br>
+Avg: ${(scores.reduce((a,b)=>a+b)/scores.length).toFixed(1)}
 `;
 }
 
-function buildInsights(name,scores){
-let text="";
-let avg=scores.reduce((a,b)=>a+b)/scores.length;
+function buildInsights(){
+let stats={};
 
-if(avg>260) text+="🔥 Elite<br>";
-if(scores.length>=2){
-let d=scores.at(-1)-scores.at(-2);
-if(d>15) text+="🚀 Big jump<br>";
-if(d<-20) text+="⚠️ Drop<br>";
-}
+season.forEach(e=>{
+Object.entries(e.archers).forEach(([n,o])=>{
+if(!stats[n])stats[n]=[];
+stats[n].push(o.score);
+});
+});
 
-insight.innerHTML=text;
+// top12
+let top=Object.entries(stats).map(([n,s])=>({
+n,avg:s.reduce((a,b)=>a+b)/s.length
+})).sort((a,b)=>b.avg-a.avg).slice(0,12);
+
+top12.innerHTML="Top 12:<br>"+top.map(t=>t.n).join("<br>");
+
+// improved
+let imp=Object.entries(stats).map(([n,s])=>{
+let diff=s.length>1 ? s.at(-1)-s.at(-2):0;
+return {n,diff};
+}).sort((a,b)=>b.diff-a.diff).slice(0,5);
+
+improved.innerHTML="Most Improved:<br>"+imp.map(i=>`${i.n} (+${i.diff})`).join("<br>");
 }
 
 build();
