@@ -1,294 +1,28 @@
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-<script>
-  function loadData(){
-  db.collection("season").get().then(snapshot=>{
-    season = [];
-
-    snapshot.forEach(doc=>{
-      season.push(doc.data());
-    });
-
-    build();
-  });
-}
-const firebaseConfig = {
-  apiKey: "AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
-  authDomain: "nasp-dashboard.firebaseapp.com",
-  projectId: "nasp-dashboard",
-  storageBucket: "nasp-dashboard.firebasestorage.app",
-  messagingSenderId: "355731537969",
-  appId: "1:355731537969:web:107b5a6646944101acd510"
-};
-
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();  
-let season = [];
-
-function process(){
-  let lines = input.value.split("\n");
-  let e = { tournament: lines.find(l=>l.trim()) || "Event", teamScore:0, archers:{} };
-
-  lines.forEach(l=>{
-    if(l.includes("Team Score")) e.teamScore = parseInt(l.match(/\d+/)[0]);
-
-    if(/^\d{2,3}/.test(l)){
-      let p = l.replace("(T)","").trim().split(/\s+/);
-      let gi = p.findIndex(x=>x=="M"||x=="F");
-
-      if(gi === -1) return;
-
-      let name = p.slice(2, gi-1).join(" ");
-      let score = +p[0];
-      let tens = +p[1];
-      let gender = p[gi];
-
-      if(name.length < 3) return;
-
-      e.archers[name] = {score, tens, gender};
-    }
-  });
-
-  db.collection("season").add(e);
-
-season.push(e);
-  build();
-}
-
-function resetData(){
-  localStorage.clear();
-  location.reload();
-}
-
-function build(){
-  let archers = [...new Set(season.flatMap(e=>Object.keys(e.archers)))];
-
-  archer.innerHTML = archers.map(a=>`<option>${a}</option>`).join("");
-  tournament.innerHTML = season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
-
-  archer.onchange = update;
-  tournament.onchange = ()=>{
-    update();
-    buildRoster();
-  };
-
-  buildRoster();
-  drawTeamChart();
-  update();
-}
-
-function update(){
-  let name = archer.value;
-
-  let scores=[], tens=[], labels=[];
-
-  season.forEach(e=>{
-    if(e.archers[name]){
-      scores.push(e.archers[name].score);
-      tens.push(e.archers[name].tens);
-      labels.push(e.tournament);
-    }
-  });
-
-  if(!scores.length) return;
-
-  pr.innerText = Math.max(...scores);
-  avg.innerText = Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-  let totalTens = tens.reduce((a,b)=>a+b,0);
-document.getElementById("tens").innerText = totalTens;
-
-  let trend = scores.length>1 ? scores.at(-1)-scores.at(-2):0;
-  predict.innerText = Math.round(scores.at(-1)+trend);
-
-  drawArcherChart(labels, scores, tens);
-  drawTeamStats();
-  drawInsights(name, scores);
-}
-
-function drawArcherChart(labels, scores, tens){
-  if(window.aChart) aChart.destroy();
-
-  aChart = new Chart(archerChart,{
-    data:{
-      labels,
-      datasets:[
-        {
-          type:'line',
-          label:'Score',
-          data:scores,
-          borderWidth:3,
-          yAxisID:'y'
-        },
-        {
-          type:'bar',
-          label:'10s',
-          data:tens,
-          yAxisID:'y1'
-        }
-      ]
-    },
-    options:{
-      scales:{
-        y:{position:'left'},
-        y1:{position:'right', grid:{drawOnChartArea:false}}
-      }
-    }
-  });
-}
-
-function drawTeamChart(){
-  if(window.tChart) tChart.destroy();
-
-  let labels = season.map(e=>e.tournament);
-  let scores = season.map(e=>e.teamScore);
-
-  tChart = new Chart(teamChart,{
-    type:'line',
-    data:{labels, datasets:[{label:'Team Score', data:scores}]}
-  });
-}
-
-function drawTeamStats(){
-  let e = season[tournament.value];
-
-  if(!e) return;
-
-  let avgScore = Math.round(
-    Object.values(e.archers).reduce((a,b)=>a+b.score,0) /
-    Object.keys(e.archers).length
-  );
-
-  teamStats.innerHTML = `
-    Score: ${e.teamScore}<br>
-    Average: ${avgScore}
-  `;
-}
-
-function buildRoster(){
-  let stats = {};
-  let selected = season[tournament.value];
-
-  season.forEach(e=>{
-    Object.entries(e.archers).forEach(([n,o])=>{
-      if(!stats[n]) stats[n]=[];
-      stats[n].push(o);
-    });
-  });
-
-  let rows = Object.entries(stats).map(([n,a])=>{
-    let scores = a.map(x=>x.score);
-    let avg = Math.round(scores.reduce((x,y)=>x+y)/scores.length);
-    let pr = Math.max(...scores);
-    let tens = a.reduce((x,y)=>x+y.tens,0);
-
-    let variance = scores.reduce((x,y)=>x+(y-avg)**2,0)/scores.length;
-
-    let tournamentScore = selected?.archers[n]?.score || "-";
-
-    return {
-      n, avg, pr, tens,
-      consistency: Math.round(100-variance),
-      gender:a[0].gender,
-      tournamentScore
-    };
-  }).sort((a,b)=>b.avg-a.avg);
-
-  roster.innerHTML = `
-  <tr>
-    <th>Name</th><th>Avg</th><th>PR</th><th>10s</th>
-    <th>Consistency</th><th>Tournament</th>
-  </tr>
-  ` + rows.map(r=>`
-  <tr>
-    <td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
-    <td>${r.avg}</td>
-    <td>${r.pr}</td>
-    <td>${r.tens}</td>
-    <td>${r.consistency}</td>
-    <td>${r.tournamentScore}</td>
-  </tr>`).join("");
-}
-
-function drawInsights(name,scores){
-  let avgScore = Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-  let txt = "";
-
-  if(avgScore>260) txt+="🔥 State Level<br>";
-  else if(avgScore>240) txt+="💪 Strong Varsity<br>";
-
-  if(scores.length>1){
-    let diff = scores.at(-1)-scores.at(-2);
-    if(diff>15) txt+="🚀 Big Improvement<br>";
-    if(diff<-20) txt+="⚠️ Major Drop<br>";
-  }
-
-  insight.innerHTML = txt;
-}
-
-build();
-</script><!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
 <style>
-body{
-  background:#0a0a0a;
-  color:white;
-  font-family:Arial;
-  margin:0;
-}
-
+body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
 .container{padding:12px; max-width:900px; margin:auto;}
-
 textarea{width:100%;height:100px;margin-bottom:10px;}
-
-button{
-  width:100%;
-  padding:12px;
-  margin-bottom:10px;
-  background:#6A0DAD;
-  color:white;
-  border:none;
-  border-radius:8px;
-}
-
-.card{
-  background:#111;
-  padding:12px;
-  margin-bottom:12px;
-  border-radius:12px;
-}
-
+button{width:100%;padding:12px;margin-bottom:10px;background:#6A0DAD;color:white;border:none;border-radius:8px;}
+.card{background:#111;padding:12px;margin-bottom:12px;border-radius:12px;}
 h3{margin:0 0 8px 0;}
-
-select{
-  width:100%;
-  padding:8px;
-  margin-bottom:10px;
-  background:#000;
-  color:white;
-  border:1px solid #333;
-}
-
+select{width:100%;padding:8px;margin-bottom:10px;background:#000;color:white;border:1px solid #333;}
 table{width:100%;border-collapse:collapse;}
 td,th{padding:6px;border-bottom:1px solid #333;text-align:left;}
-
 .male{color:#4da6ff;}
 .female{color:#ff66cc;}
-
 .big{font-size:26px;font-weight:bold;}
-
-.grid{
-  display:grid;
-  grid-template-columns:1fr;
-  gap:12px;
-}
-
-@media(min-width:700px){
-  .grid{grid-template-columns:1fr 1fr;}
-}
+.grid{display:grid;grid-template-columns:1fr;gap:12px;}
+@media(min-width:700px){.grid{grid-template-columns:1fr 1fr;}}
 </style>
 </head>
 
@@ -304,7 +38,6 @@ td,th{padding:6px;border-bottom:1px solid #333;text-align:left;}
 
 <div class="grid">
 
-<!-- ARCHER PANEL -->
 <div class="card">
 <h3>Archer Performance</h3>
 
@@ -313,17 +46,14 @@ td,th{padding:6px;border-bottom:1px solid #333;text-align:left;}
 <div class="big">PR: <span id="pr"></span></div>
 <div>Average: <span id="avg"></span></div>
 <div>Total 10s: <span id="tens"></span></div>
-<div>Prediction: <span id="predict"></span></div>
 
 <canvas id="archerChart"></canvas>
 </div>
 
-<!-- TEAM PANEL -->
 <div class="card">
 <h3>Team Performance</h3>
 
 <select id="tournament"></select>
-
 <div id="teamStats"></div>
 
 <canvas id="teamChart"></canvas>
@@ -331,21 +61,11 @@ td,th{padding:6px;border-bottom:1px solid #333;text-align:left;}
 
 </div>
 
-<!-- ROSTER -->
 <div class="card">
 <h3>Roster</h3>
-<table id="roster">
-<tr>
-<th>Name</th>
-<th>Avg</th>
-<th>PR</th>
-<th>10s</th>
-<th>Consistency</th>
-</tr>
-</table>
+<table id="roster"></table>
 </div>
 
-<!-- INSIGHTS -->
 <div class="card">
 <h3>AI Coach Insights</h3>
 <div id="insight"></div>
@@ -354,221 +74,221 @@ td,th{padding:6px;border-bottom:1px solid #333;text-align:left;}
 </div>
 
 <script>
-let season=JSON.parse(localStorage.getItem("season")||"[]");
 
+// 🔥 FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
+  authDomain: "nasp-dashboard.firebaseapp.com",
+  projectId: "nasp-dashboard"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let season = [];
+
+// 🟣 PROCESS INPUT
 function process(){
-let lines=input.value.split("\n");
-let e={tournament:lines.find(l=>l.trim())||"Event",teamScore:0,archers:{}};
+  let lines = input.value.split("\n");
 
-lines.forEach(l=>{
-if(l.includes("Team Score")) e.teamScore=parseInt(l.match(/\d+/)[0]);
+  let e = {
+    tournament: lines.find(l=>l.trim()) || "Event",
+    teamScore:0,
+    archers:{}
+  };
 
-if(/^\d{2,3}/.test(l)){
-let p=l.replace("(T)","").split(/\s+/);
-let gi=p.findIndex(x=>x=="M"||x=="F");
+  lines.forEach(l=>{
+    if(l.includes("Team Score")){
+      e.teamScore = parseInt(l.match(/\d+/)[0]);
+    }
 
-let name=p.slice(2,gi-1).join(" ");
-let score=+p[0];
-let tens=+p[1];
-let gender=p[gi];
+    if(/^\d{2,3}/.test(l)){
+      let p = l.replace("(T)","").trim().split(/\s+/);
+      let gi = p.findIndex(x=>x=="M"||x=="F");
+      if(gi === -1) return;
 
-e.archers[name]={score,tens,gender};
+      let name = p.slice(2, gi-1).join(" ");
+      let score = +p[0];
+      let tens = +p[1];
+      let gender = p[gi];
+
+      e.archers[name] = {score, tens, gender};
+    }
+  });
+
+  db.collection("season").add(e).then(()=>loadData());
 }
-});
 
-db.collection("season").add(e);
-
-season.push(e);
-build();
+// 🔥 LOAD FROM FIREBASE
+function loadData(){
+  db.collection("season").get().then(snapshot=>{
+    season = [];
+    snapshot.forEach(doc=>season.push(doc.data()));
+    build();
+  });
 }
 
+// 🔥 RESET DATABASE
 function resetData(){
-  if(!confirm("Delete ALL season data?")) return;
+  if(!confirm("Delete ALL data?")) return;
 
   db.collection("season").get().then(snapshot=>{
     snapshot.forEach(doc=>{
       db.collection("season").doc(doc.id).delete();
     });
-
     season = [];
     build();
   });
 }
 
+// 🟣 BUILD UI
 function build(){
+  let archers = [...new Set(season.flatMap(e=>Object.keys(e.archers)))];
 
-let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))];
-archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
+  archer.innerHTML = archers.map(a=>`<option>${a}</option>`).join("");
+  tournament.innerHTML = season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
 
-tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
+  archer.onchange = update;
+  tournament.onchange = update;
 
-archer.onchange=update;
-tournament.onchange=()=>{
-  update();
   buildRoster();
-};
-
-};
-}).sort((a,b)=>b.avg-a.avg);
-
-roster.innerHTML=`
-<tr>
-<th>Name</th>
-<th>Avg</th>
-<th>PR</th>
-<th>10s</th>
-<th>Consistency</th>
-<th>Tournament</th>
-</tr>
-` + rows.map(r=>`
-<tr>
-<td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
-<td>${r.avg}</td>
-<td>${r.pr}</td>
-<td>${r.tens}</td>
-<td>${r.consistency}</td>
-<td>${r.tournamentScore}</td>
-</tr>`).join("");
-}
-buildTeamChart();
-update();
+  drawTeamChart();
+  update();
 }
 
+// 🟣 UPDATE DASHBOARD
 function update(){
-let name=archer.value;
+  let name = archer.value;
 
-let scores=[],tens=[],labels=[];
+  let scores=[], tensArr=[], labels=[];
 
-season.forEach(e=>{
-if(e.archers[name]){
-scores.push(e.archers[name].score);
-tens.push(e.archers[name].tens);
-labels.push(e.tournament);
-}
-});
+  season.forEach(e=>{
+    if(e.archers[name]){
+      scores.push(e.archers[name].score);
+      tensArr.push(e.archers[name].tens);
+      labels.push(e.tournament);
+    }
+  });
 
-if(!scores.length)return;
+  if(!scores.length) return;
 
-pr.innerText=Math.max(...scores);
-avg.innerText=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-tens.innerText=tens.reduce((a,b)=>a+b);
+  pr.innerText = Math.max(...scores);
+  avg.innerText = Math.round(scores.reduce((a,b)=>a+b)/scores.length);
 
-let trend=scores.length>1 ? scores.at(-1)-scores.at(-2):0;
-predict.innerText=Math.round(scores.at(-1)+trend);
+  let totalTens = tensArr.reduce((a,b)=>a+b,0);
+  document.getElementById("tens").innerText = totalTens;
 
-function drawArcherChart(labels,scores,tens){
-if(window.aChart)aChart.destroy();
-
-aChart=new Chart(archerChart,{
-data:{
-labels,
-datasets:[
-{
-type:'line',
-label:'Score',
-data:scores,
-borderWidth:3,
-yAxisID:'y'
-},
-{
-type:'bar',
-label:'10s',
-data:tens,
-yAxisID:'y1'
-}
-]
-},
-options:{
-scales:{
-y:{
-position:'left',
-title:{display:true,text:'Score'}
-},
-y1:{
-position:'right',
-grid:{drawOnChartArea:false},
-title:{display:true,text:'10s'},
-ticks:{stepSize:1}
-}
-}
-}
-});
+  drawArcherChart(labels, scores, tensArr);
+  drawTeamStats();
+  drawInsights(scores);
 }
 
+// 🟣 ARCHER CHART
+function drawArcherChart(labels, scores, tens){
+  if(window.aChart) aChart.destroy();
+
+  aChart = new Chart(archerChart,{
+    data:{
+      labels,
+      datasets:[
+        {type:'line', label:'Score', data:scores, borderWidth:3},
+        {type:'bar', label:'10s', data:tens, yAxisID:'y1'}
+      ]
+    },
+    options:{
+      scales:{
+        y:{position:'left'},
+        y1:{position:'right', grid:{drawOnChartArea:false}}
+      }
+    }
+  });
+}
+
+// 🟣 TEAM CHART
 function drawTeamChart(){
-if(window.tChart)tChart.destroy();
+  if(window.tChart) tChart.destroy();
 
-let labels=season.map(e=>e.tournament);
-let scores=season.map(e=>e.teamScore);
+  let labels = season.map(e=>e.tournament);
+  let scores = season.map(e=>e.teamScore);
 
-tChart=new Chart(teamChart,{
-type:'line',
-data:{labels,datasets:[{label:'Team Score',data:scores,borderWidth:3}]}
-});
+  tChart = new Chart(teamChart,{
+    type:'line',
+    data:{labels,datasets:[{label:'Team Score',data:scores,borderWidth:3}]}
+  });
 }
 
-function buildTeamChart(){drawTeamChart();}
-
+// 🟣 TEAM STATS
 function drawTeamStats(){
-let e=season[tournament.value];
+  let e = season[tournament.value];
+  if(!e) return;
 
-let avg=Math.round(Object.values(e.archers).reduce((a,b)=>a+b.score,0)/Object.keys(e.archers).length);
+  let avgScore = Math.round(
+    Object.values(e.archers).reduce((a,b)=>a+b.score,0) /
+    Object.keys(e.archers).length
+  );
 
-teamStats.innerHTML=`
-Score: ${e.teamScore}<br>
-Average: ${avg}
-`;
+  teamStats.innerHTML = `
+    Score: ${e.teamScore}<br>
+    Average: ${avgScore}
+  `;
 }
 
+// 🟣 ROSTER
 function buildRoster(){
-let stats={};
+  let stats={};
 
-season.forEach(e=>{
-Object.entries(e.archers).forEach(([n,o])=>{
-if(!stats[n])stats[n]=[];
-stats[n].push(o);
-});
-});
+  season.forEach(e=>{
+    Object.entries(e.archers).forEach(([n,o])=>{
+      if(!stats[n]) stats[n]=[];
+      stats[n].push(o);
+    });
+  });
 
-let rows=Object.entries(stats).map(([n,a])=>{
-let scores=a.map(x=>x.score);
-let avg=Math.round(scores.reduce((x,y)=>x+y)/scores.length);
-let pr=Math.max(...scores);
-let tens=a.reduce((x,y)=>x+y.tens,0);
-let variance=scores.reduce((x,y)=>x+(y-avg)**2,0)/scores.length;
+  let rows=Object.entries(stats).map(([n,a])=>{
+    let scores=a.map(x=>x.score);
+    let avg=Math.round(scores.reduce((x,y)=>x+y)/scores.length);
+    let pr=Math.max(...scores);
+    let tens=a.reduce((x,y)=>x+y.tens,0);
 
-return {n,avg,pr,tens,consistency:Math.round(100-variance),gender:a[0].gender};
-}).sort((a,b)=>b.avg-a.avg);
+    let variance=scores.reduce((x,y)=>x+(y-avg)**2,0)/scores.length;
 
-roster.innerHTML=`
-<tr><th>Name</th><th>Avg</th><th>PR</th><th>10s</th><th>Consistency</th></tr>
-` + rows.map(r=>`
-<tr>
-<td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
-<td>${r.avg}</td>
-<td>${r.pr}</td>
-<td>${r.tens}</td>
-<td>${r.consistency}</td>
-</tr>`).join("");
+    return {
+      n,avg,pr,tens,
+      consistency:Math.round(100-variance),
+      gender:a[0].gender
+    };
+  }).sort((a,b)=>b.avg-a.avg);
+
+  roster.innerHTML = `
+  <tr>
+    <th>Name</th><th>Avg</th><th>PR</th><th>10s</th><th>Consistency</th>
+  </tr>
+  ` + rows.map(r=>`
+  <tr>
+    <td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
+    <td>${r.avg}</td>
+    <td>${r.pr}</td>
+    <td>${r.tens}</td>
+    <td>${r.consistency}</td>
+  </tr>`).join("");
 }
 
-function drawInsights(name,scores){
-let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-let txt="";
+// 🟣 INSIGHTS
+function drawInsights(scores){
+  let txt="";
 
-if(avg>260) txt+="🔥 State Level<br>";
-else if(avg>240) txt+="💪 Strong Varsity<br>";
+  if(scores.length>1){
+    let diff=scores.at(-1)-scores.at(-2);
+    if(diff>15) txt+="🚀 Big Improvement<br>";
+    if(diff<-20) txt+="⚠️ Major Drop<br>";
+  }
 
-if(scores.length>1){
-let diff=scores.at(-1)-scores.at(-2);
-if(diff>15) txt+="🚀 Big Improvement<br>";
-if(diff<-20) txt+="⚠️ Major Drop<br>";
+  insight.innerHTML = txt;
 }
 
-insight.innerHTML=txt;
-}
-
+// 🔥 START APP
 loadData();
+
 </script>
 
 </body>
