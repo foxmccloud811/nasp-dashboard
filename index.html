@@ -29,7 +29,6 @@ th{cursor:pointer;color:#aaa;}
 
 .col-name{width:30%;}
 .col-small{width:14%;text-align:center;}
-
 </style>
 </head>
 
@@ -89,7 +88,6 @@ th{cursor:pointer;color:#aaa;}
 <table id="roster"></table>
 </div>
 
-<!-- TEAM MANAGEMENT (MOVED HERE) -->
 <div class="card">
 <h3>Teams</h3>
 <select id="teamSelect" onchange="loadData()"></select>
@@ -178,7 +176,7 @@ if(/^\d{2,3}/.test(l)){
 let p=l.replace("(T)","").split(/\s+/);
 let gi=p.findIndex(x=>x=="M"||x=="F");
 let name=p.slice(2,gi-1).join(" ");
-e.archers[name]={score:+p[0],tens:+p[1],gender:p[gi]};
+e.archers[name]={score:+p[0],tens:parseInt(p[1])||0,gender:p[gi]};
 }
 });
 
@@ -192,7 +190,6 @@ let team=teamSelect.value;
 db.collection("teams").doc(team).collection("season").get().then(s=>{
 season=[];
 s.forEach(d=>season.push(d.data()));
-season.sort((a,b)=>a.tournament.localeCompare(b.tournament)); // FIX ORDER
 build();
 });
 }
@@ -229,6 +226,12 @@ labels.push(e.tournament);
 if(!scores.length)return;
 
 let pr=Math.max(...scores);
+let last=scores.at(-1);
+let prev=scores.at(-2)||last;
+
+let trend = last>prev ? "⬆️" : last<prev ? "⬇️" : "➡️";
+
+profile.innerHTML=`Avg: ${Math.round(scores.reduce((a,b)=>a+b)/scores.length)} | PR: ${pr} ${trend}`;
 
 if(aChart)aChart.destroy();
 
@@ -238,22 +241,44 @@ labels,
 datasets:[
 {
 type:'line',
+label:'Score',
 data:scores,
 borderColor:'#6A0DAD',
+tension:.4,
+pointRadius:scores.map(s=>s===pr?6:3),
 pointBackgroundColor:scores.map(s=>s===pr?'gold':'#6A0DAD')
 },
 {
 type:'bar',
+label:'10s',
 data:tens,
 backgroundColor:'white',
 yAxisID:'y1'
 }
 ]
 },
-options:{scales:{y1:{position:'right'}}}
+options:{
+plugins:{
+tooltip:{
+callbacks:{
+label:(ctx)=>{
+let i=ctx.dataIndex;
+return `${labels[i]}: ${scores[i]} pts | ${tens[i]} tens`;
+}
+}
+}
+},
+scales:{
+y:{title:{display:true,text:'Score'}},
+y1:{
+position:'right',
+title:{display:true,text:'10s'},
+grid:{drawOnChartArea:false},
+ticks:{stepSize:1}
+}
+}
+}
 });
-
-profile.innerHTML=`Avg: ${Math.round(scores.reduce((a,b)=>a+b)/scores.length)} | PR: ${pr}`;
 }
 
 function drawTeamChart(){
@@ -264,7 +289,12 @@ tChart=new Chart(teamChart,{
 type:'line',
 data:{
 labels:season.map(e=>e.tournament),
-datasets:[{data:season.map(e=>e.teamScore),borderColor:'#6A0DAD'}]
+datasets:[{
+label:'Team Score',
+data:season.map(e=>e.teamScore),
+borderColor:'#6A0DAD',
+tension:.4
+}]
 }
 });
 
