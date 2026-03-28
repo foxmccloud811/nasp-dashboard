@@ -3,18 +3,27 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 
 <style>
 body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
-.container{padding:12px;max-width:1000px;margin:auto;}
+.container{padding:12px;max-width:1100px;margin:auto;}
 .card{background:#111;padding:14px;border-radius:12px;margin-bottom:12px;}
 .grid{display:grid;grid-template-columns:1fr;gap:12px;}
 @media(min-width:800px){.grid{grid-template-columns:1fr 1fr;}}
+
 button{width:100%;padding:10px;background:#6A0DAD;color:white;border:none;border-radius:8px;margin-top:6px;}
 textarea{width:100%;height:100px;margin-bottom:10px;}
+
+.male{color:#4da6ff;}
+.female{color:#ff66cc;}
+
+table{width:100%;border-collapse:collapse;}
+td,th{padding:8px;border-bottom:1px solid #333;text-align:left;}
+th{color:#aaa;}
 </style>
 </head>
 
@@ -24,12 +33,14 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 
 <h2>🏹 NASP Elite Dashboard</h2>
 
+<!-- LOGIN -->
 <div id="loginCard" class="card">
 <input id="email" placeholder="Email">
 <input id="password" type="password" placeholder="Password">
 <button onclick="login()">Coach Login</button>
 </div>
 
+<!-- ADMIN -->
 <div id="adminPanel" style="display:none;">
 <div class="card">
 <textarea id="input" placeholder="Paste NASP page"></textarea>
@@ -38,7 +49,9 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 </div>
 </div>
 
+<!-- DASHBOARD -->
 <div class="grid">
+
 <div class="card">
 <h3>Archer</h3>
 <select id="archer"></select>
@@ -52,8 +65,22 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 <div id="teamStats"></div>
 <canvas id="teamChart"></canvas>
 </div>
+
+<div class="card">
+<h3>Top 12</h3>
+<label><input type="radio" name="mode" value="season" checked onchange="buildTop12()"> Season</label>
+<label><input type="radio" name="mode" value="event" onchange="buildTop12()"> Tournament</label>
+<div id="top12"></div>
 </div>
 
+<div class="card">
+<h3>Coach Insights</h3>
+<div id="insight"></div>
+</div>
+
+</div>
+
+<!-- ROSTER -->
 <div class="card">
 <h3>Roster</h3>
 <table id="roster"></table>
@@ -99,7 +126,7 @@ db.collection("teams").doc("default").collection("season")
 .get().then(s=>s.forEach(d=>d.ref.delete())).then(loadData);
 }
 
-// PROCESS
+// PROCESS DATA
 function process(){
 
 let lines=input.value.split("\n");
@@ -110,6 +137,8 @@ lines.forEach(l=>{
 
 if(l.includes("Team Score")){
 e.teamScore=parseInt(l.match(/\d+/)?.[0]||0);
+let t=l.match(/\((\d+)\)/);
+e.teamTens=t?+t[1]:0;
 }
 
 if(/^\d{2,3}/.test(l)){
@@ -126,8 +155,9 @@ let score=parseInt(p[0]);
 if(isNaN(score))return;
 
 let tens=parseInt(p[1])||0;
+let gender=p[gi];
 
-e.archers[name]={score,tens};
+e.archers[name]={score,tens,gender};
 }
 });
 
@@ -139,7 +169,7 @@ return;
 db.collection("teams").doc("default").collection("season").add(e).then(loadData);
 }
 
-// LOAD
+// LOAD DATA
 function loadData(){
 db.collection("teams").doc("default").collection("season").get().then(s=>{
 season=[];
@@ -148,7 +178,7 @@ build();
 });
 }
 
-// BUILD
+// BUILD UI
 function build(){
 
 let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
@@ -156,16 +186,26 @@ let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
 archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
 tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
 
+archer.onchange=update;
+tournament.onchange=()=>{
 update();
 buildRoster();
 drawTeam();
+buildTop12();
+buildInsights();
+};
+
+update();
+buildRoster();
+drawTeam();
+buildTop12();
+buildInsights();
 }
 
-// ARCHER
+// ARCHER CHART
 function update(){
 
 let name=archer.value;
-
 let scores=[],tens=[],labels=[];
 
 season.forEach(e=>{
@@ -177,6 +217,10 @@ labels.push(e.tournament);
 });
 
 if(!scores.length)return;
+
+let pr=Math.max(...scores);
+
+profile.innerHTML=`Avg ${Math.round(scores.reduce((a,b)=>a+b)/scores.length)} | PR ${pr}`;
 
 if(aChart)aChart.destroy();
 
@@ -197,7 +241,7 @@ y1:{position:'right',grid:{drawOnChartArea:false}}
 });
 }
 
-// TEAM
+// TEAM CHART
 function drawTeam(){
 
 if(tChart)tChart.destroy();
@@ -206,15 +250,86 @@ tChart=new Chart(teamChart,{
 type:'line',
 data:{
 labels:season.map(e=>e.tournament),
-datasets:[{label:'Team Score',data:season.map(e=>e.teamScore),borderColor:'#6A0DAD'}]
+datasets:[{
+label:'Team Score',
+data:season.map(e=>e.teamScore),
+borderColor:'#6A0DAD'
+}]
 }
 });
+
+let e=season[tournament.value];
+teamStats.innerHTML=e?`Score ${e.teamScore} | 10s ${e.teamTens}`:"";
+}
+
+// TOP 12
+function buildTop12(){
+
+if(!season.length) return;
+
+let mode=document.querySelector('input[name="mode"]:checked').value;
+let list=[];
+
+if(mode==="season"){
+let stats={};
+season.forEach(e=>{
+Object.entries(e.archers).forEach(([n,o])=>{
+if(!stats[n])stats[n]=[];
+stats[n].push(o.score);
+});
+});
+list=Object.entries(stats).map(([n,s])=>({name:n,val:Math.round(s.reduce((a,b)=>a+b)/s.length)}));
+}else{
+let e=season[tournament.value];
+if(!e)return;
+list=Object.entries(e.archers).map(([n,o])=>({name:n,val:o.score}));
+}
+
+list.sort((a,b)=>b.val-a.val);
+
+top12.innerHTML=list.slice(0,12)
+.map((x,i)=>`${i+1}. ${x.name} - ${x.val}`)
+.join("<br>");
+}
+
+// COACH INSIGHTS
+function buildInsights(){
+
+if(!season.length) return;
+
+let latest=season.at(-1);
+let scores=Object.values(latest.archers).map(a=>a.score);
+
+let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
+
+let text="";
+
+if(avg>260) text+="🔥 Elite performance<br>";
+else if(avg>240) text+="💪 Strong showing<br>";
+else text+="📈 Room to improve<br>";
+
+let max=Math.max(...scores);
+let min=Math.min(...scores);
+
+if(max-min>50) text+="⚠️ Large spread — consistency needed<br>";
+else text+="🎯 Tight grouping<br>";
+
+insight.innerHTML=text;
 }
 
 // ROSTER
 function buildRoster(){
 
-roster.innerHTML="<tr><th>Name</th><th>Avg</th><th>PR</th></tr>";
+let sel=season[tournament.value];
+
+roster.innerHTML=`
+<tr>
+<th>Name</th>
+<th>${sel?.tournament || "Score"}</th>
+<th>Avg</th>
+<th>PR</th>
+</tr>
+`;
 
 let stats={};
 
@@ -225,11 +340,27 @@ stats[n].push(o.score);
 });
 });
 
-Object.entries(stats).forEach(([n,s])=>{
+Object.entries(stats)
+.sort((a,b)=>{
+let avgA=a[1].reduce((x,y)=>x+y)/a[1].length;
+let avgB=b[1].reduce((x,y)=>x+y)/b[1].length;
+return avgB-avgA;
+})
+.forEach(([n,s])=>{
+
 let avg=Math.round(s.reduce((a,b)=>a+b)/s.length);
 let pr=Math.max(...s);
+let cur=sel?.archers[n]?.score||"-";
 
-roster.innerHTML+=`<tr><td>${n}</td><td>${avg}</td><td>${pr}</td></tr>`;
+let gender=season.find(e=>e.archers[n])?.archers[n]?.gender;
+
+roster.innerHTML+=`
+<tr>
+<td class="${gender==='M'?'male':'female'}">${n}</td>
+<td>${cur}</td>
+<td>${avg}</td>
+<td>${pr}</td>
+</tr>`;
 });
 }
 
