@@ -163,9 +163,33 @@ archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
 tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
 
 archer.onchange=update;
-tournament.onchange=update;
+tournament.onchange=()=>{
+  update();
+  buildRoster();
+};
 
-buildRoster();
+};
+}).sort((a,b)=>b.avg-a.avg);
+
+roster.innerHTML=`
+<tr>
+<th>Name</th>
+<th>Avg</th>
+<th>PR</th>
+<th>10s</th>
+<th>Consistency</th>
+<th>Tournament</th>
+</tr>
+` + rows.map(r=>`
+<tr>
+<td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
+<td>${r.avg}</td>
+<td>${r.pr}</td>
+<td>${r.tens}</td>
+<td>${r.consistency}</td>
+<td>${r.tournamentScore}</td>
+</tr>`).join("");
+}
 buildTeamChart();
 update();
 }
@@ -192,11 +216,6 @@ tens.innerText=tens.reduce((a,b)=>a+b);
 let trend=scores.length>1 ? scores.at(-1)-scores.at(-2):0;
 predict.innerText=Math.round(scores.at(-1)+trend);
 
-drawArcherChart(labels,scores,tens);
-drawTeamStats();
-drawInsights(name,scores);
-}
-
 function drawArcherChart(labels,scores,tens){
 if(window.aChart)aChart.destroy();
 
@@ -204,9 +223,34 @@ aChart=new Chart(archerChart,{
 data:{
 labels,
 datasets:[
-{type:'line',label:'Score',data:scores,borderWidth:3},
-{type:'bar',label:'10s',data:tens}
+{
+type:'line',
+label:'Score',
+data:scores,
+borderWidth:3,
+yAxisID:'y'
+},
+{
+type:'bar',
+label:'10s',
+data:tens,
+yAxisID:'y1'
+}
 ]
+},
+options:{
+scales:{
+y:{
+position:'left',
+title:{display:true,text:'Score'}
+},
+y1:{
+position:'right',
+grid:{drawOnChartArea:false},
+title:{display:true,text:'10s'},
+ticks:{stepSize:1}
+}
+}
 }
 });
 }
