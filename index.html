@@ -4,7 +4,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
@@ -14,8 +13,7 @@ body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
 .container{padding:12px; max-width:1100px; margin:auto;}
 textarea{width:100%;height:100px;margin-bottom:10px;}
 button{width:100%;padding:12px;margin-bottom:10px;background:#6A0DAD;color:white;border:none;border-radius:8px;}
-.card{background:linear-gradient(145deg,#111,#1a1a1a);padding:14px;border-radius:14px;box-shadow:0 0 10px rgba(106,13,173,0.3);}
-h2{color:#c084fc;}
+.card{background:#111;padding:14px;border-radius:14px;}
 select{width:100%;padding:8px;margin-bottom:10px;background:#000;color:white;border:1px solid #333;}
 table{width:100%;border-collapse:collapse;}
 td,th{padding:6px;border-bottom:1px solid #333;}
@@ -31,14 +29,12 @@ td,th{padding:6px;border-bottom:1px solid #333;}
 
 <h2>🏹 NASP Elite Dashboard</h2>
 
-<!-- LOGIN -->
 <div id="loginCard" class="card">
 <input id="email" placeholder="Email">
 <input id="password" type="password" placeholder="Password">
 <button onclick="login()">Coach Login</button>
 </div>
 
-<!-- ADMIN -->
 <div id="adminPanel" style="display:none;">
 <textarea id="input" placeholder="Paste NASP page here"></textarea>
 <button onclick="process()">ADD TO SEASON</button>
@@ -70,10 +66,15 @@ td,th{padding:6px;border-bottom:1px solid #333;}
 <div id="top12"></div>
 </div>
 
+<div class="card">
+<h3>🚀 Most Improved</h3>
+<div id="improved"></div>
+</div>
+
 </div>
 
 <div class="card">
-<h3>Roster</h3>
+<h3 id="rosterTitle">Roster</h3>
 <table id="roster"></table>
 </div>
 
@@ -86,7 +87,6 @@ td,th{padding:6px;border-bottom:1px solid #333;}
 
 <script>
 
-// 🔥 FIREBASE
 const firebaseConfig = {
   apiKey: "AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
   authDomain: "nasp-dashboard.firebaseapp.com",
@@ -94,17 +94,15 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 
-const db = firebase.firestore();
-const auth = firebase.auth();
+const db=firebase.firestore();
+const auth=firebase.auth();
 
 let season=[];
 
 // 🔐 LOGIN
 function login(){
-  auth.signInWithEmailAndPassword(email.value,password.value)
-  .catch(()=>alert("Login failed"));
+  auth.signInWithEmailAndPassword(email.value,password.value);
 }
-
 auth.onAuthStateChanged(user=>{
   if(user){
     loginCard.style.display="none";
@@ -115,7 +113,6 @@ auth.onAuthStateChanged(user=>{
 // 🟣 PROCESS
 function process(){
   let lines=input.value.split("\n");
-
   let e={tournament:lines[0],teamScore:0,archers:{}};
 
   lines.forEach(l=>{
@@ -126,11 +123,7 @@ function process(){
       let gi=p.findIndex(x=>x=="M"||x=="F");
 
       let name=p.slice(2,gi-1).join(" ");
-      let score=+p[0];
-      let tens=+p[1];
-      let gender=p[gi];
-
-      e.archers[name]={score,tens,gender};
+      e.archers[name]={score:+p[0],tens:+p[1],gender:p[gi]};
     }
   });
 
@@ -148,25 +141,25 @@ function loadData(){
 
 // 🟣 BUILD
 function build(){
-
   let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
 
   archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
   tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
 
   archer.onchange=update;
-  tournament.onchange=update;
+  tournament.onchange=()=>{update(); buildRoster(); buildTop12();};
 
   buildRoster();
   buildTop12();
+  buildImproved();
   drawTeamChart();
   update();
 }
 
 // 🟣 UPDATE
 function update(){
-
   let name=archer.value;
+
   let scores=[],tensArr=[],labels=[];
 
   season.forEach(e=>{
@@ -187,68 +180,13 @@ function update(){
   drawInsights(name,scores);
 }
 
-// 🟣 ARCHER CHART
-function drawArcherChart(labels,scores,tens){
-
-  if(window.aChart)aChart.destroy();
-
-  let pr=Math.max(...scores);
-
-  aChart=new Chart(archerChart,{
-    data:{
-      labels,
-      datasets:[
-        {
-          type:'line',
-          data:scores,
-          borderWidth:3,
-          pointRadius:scores.map(s=>s===pr?6:3),
-          pointBackgroundColor:scores.map(s=>s===pr?'gold':'#6A0DAD')
-        },
-        {
-          type:'bar',
-          data:tens,
-          yAxisID:'y1'
-        }
-      ]
-    },
-    options:{
-      scales:{
-        y:{position:'left'},
-        y1:{position:'right',grid:{drawOnChartArea:false}}
-      }
-    }
-  });
-}
-
-// 🟣 TEAM
-function drawTeamChart(){
-  let labels=season.map(e=>e.tournament);
-  let scores=season.map(e=>e.teamScore);
-
-  new Chart(teamChart,{type:'line',data:{labels,datasets:[{data:scores}]}});
-
-  drawTeamStats();
-}
-
-function drawTeamStats(){
-  let e=season[tournament.value];
-  if(!e)return;
-
-  let avg=Math.round(Object.values(e.archers).reduce((a,b)=>a+b.score,0)/Object.keys(e.archers).length);
-
-  teamStats.innerHTML=`Score: ${e.teamScore}<br>Avg: ${avg}`;
-}
-
-// 🟣 TOP 12 (TOGGLE)
+// 🟣 TOP 12 FIXED
 function buildTop12(){
-
   let mode=document.querySelector('input[name="mode"]:checked').value;
   let list=[];
 
   if(mode=="season"){
     let stats={};
-
     season.forEach(e=>{
       Object.entries(e.archers).forEach(([n,o])=>{
         if(!stats[n])stats[n]=[];
@@ -256,9 +194,7 @@ function buildTop12(){
       });
     });
 
-    list=Object.entries(stats).map(([n,s])=>{
-      return {name:n,val:Math.round(s.reduce((a,b)=>a+b)/s.length)};
-    });
+    list=Object.entries(stats).map(([n,s])=>({name:n,val:Math.round(s.reduce((a,b)=>a+b)/s.length)}));
 
   }else{
     let e=season[tournament.value];
@@ -266,14 +202,37 @@ function buildTop12(){
   }
 
   list.sort((a,b)=>b.val-a.val);
-
   top12.innerHTML=list.slice(0,12).map((p,i)=>`${i+1}. ${p.name} - ${p.val}`).join("<br>");
 }
 
-// 🟣 ROSTER (FIXED)
+// 🟣 MOST IMPROVED (NEW)
+function buildImproved(){
+  let list=[];
+
+  season.forEach((e,i)=>{
+    if(i===0)return;
+
+    Object.entries(e.archers).forEach(([n,o])=>{
+      let prev=season[i-1].archers[n]?.score;
+      if(prev){
+        list.push({name:n,change:o.score-prev});
+      }
+    });
+  });
+
+  list.sort((a,b)=>b.change-a.change);
+
+  improved.innerHTML=list.slice(0,5)
+  .map(p=>`${p.name}: +${p.change}`)
+  .join("<br>");
+}
+
+// 🟣 ROSTER FIXED
 function buildRoster(){
 
   let selected=season[tournament.value];
+  rosterTitle.innerText=`Roster - ${selected?.tournament||""}`;
+
   let stats={};
 
   season.forEach(e=>{
@@ -284,23 +243,21 @@ function buildRoster(){
   });
 
   let rows=Object.entries(stats).map(([n,a])=>{
-
     let scores=a.map(x=>x.score);
     let avg=Math.round(scores.reduce((x,y)=>x+y)/scores.length);
     let pr=Math.max(...scores);
     let tens=a.reduce((x,y)=>x+y.tens,0);
 
     let variance=scores.reduce((x,y)=>x+(y-avg)**2,0)/scores.length;
-    let consistency=Math.min(10,Math.round(variance/10)); // 0–10 scale
+    let consistency=Math.min(10,Math.round(variance/10));
 
     let current=selected?.archers[n]?.score||"-";
 
     return {n,avg,pr,tens,consistency,current,gender:a[0].gender};
-
   }).sort((a,b)=>b.avg-a.avg);
 
   roster.innerHTML=`
-  <tr><th>Name</th><th>Avg</th><th>PR</th><th>10s</th><th>Cons</th><th>Tournament</th></tr>
+  <tr><th>Name</th><th>Avg</th><th>PR</th><th>10s</th><th>Cons</th><th>${selected?.tournament||"Score"}</th></tr>
   `+rows.map(r=>`
   <tr>
   <td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
@@ -312,26 +269,24 @@ function buildRoster(){
   </tr>`).join("");
 }
 
-// 🟣 INSIGHTS (UPGRADED)
+// 🟣 INSIGHTS IMPROVED
 function drawInsights(name,scores){
-
   let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
   let last=scores.at(-1);
   let prev=scores.length>1?scores.at(-2):last;
 
-  let msg=`${name} is averaging ${avg}. `;
+  let msg=`${name} avg ${avg}. `;
 
-  if(last>avg) msg+="Currently shooting ABOVE average. ";
-  else msg+="Currently BELOW average. ";
+  msg+= last>avg ? "Above average. " : "Below average. ";
 
   let diff=last-prev;
 
-  if(diff>15) msg+="Huge improvement this round.";
-  else if(diff>5) msg+="Solid improvement.";
-  else if(diff<-15) msg+="Significant drop — check form.";
-  else msg+="Performance is stable.";
+  if(diff>10) msg+="Major improvement.";
+  else if(diff>5) msg+="Improving.";
+  else if(diff<-10) msg+="Large drop.";
+  else msg+="Stable performance.";
 
-  insight.innerHTML=msg;
+  insight.innerText=msg;
 }
 
 // 🔥 START
