@@ -173,10 +173,31 @@ let t=l.match(/\((\d+)\)/);
 e.teamTens=t?+t[1]:0;
 }
 if(/^\d{2,3}/.test(l)){
+
 let p=l.replace("(T)","").split(/\s+/);
 let gi=p.findIndex(x=>x=="M"||x=="F");
-let name=p.slice(2,gi-1).join(" ");
-e.archers[name]={score:+p[0],tens:parseInt(p[1])||0,gender:p[gi]};
+
+// 🚫 SKIP BAD ROWS
+if(gi < 3) return;
+
+let name = p.slice(2, gi-1).join(" ").trim();
+
+// 🚫 SKIP EMPTY NAMES
+if(!name) return;
+
+// 🚫 SKIP INVALID SCORES
+let score = parseInt(p[0]);
+if(isNaN(score)) return;
+
+let tens = parseInt(p[1]) || 0;
+let gender = p[gi];
+
+e.archers[name] = { score, tens, gender };
+  
+// 🚫 FINAL SAFETY CHECK
+if(Object.keys(e.archers).length === 0){
+alert("No valid archers found — paste may be incomplete.");
+return;
 }
 });
 
