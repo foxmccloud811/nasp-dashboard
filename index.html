@@ -8,7 +8,6 @@
 
   <style>
     body { background:#000; color:white; font-family:Arial; padding:10px; }
-
     textarea { width:100%; height:120px; margin-bottom:10px; }
 
     button {
@@ -22,14 +21,12 @@
     .card {
       background:#111; padding:12px;
       border-radius:12px; margin-bottom:12px;
-      box-shadow: 0 0 10px rgba(106,13,173,0.5);
     }
 
     .big { font-size:32px; font-weight:bold; }
-
     canvas { background:#111; border-radius:10px; }
 
-    table { width:100%; font-size:14px; }
+    table { width:100%; }
     td { padding:6px; border-bottom:1px solid #333; }
 
     .male { color:#4da6ff; }
@@ -65,11 +62,6 @@
   <table id="roster"></table>
 </div>
 
-<div class="card">
-  <div>AI Coach Insights</div>
-  <div id="insight"></div>
-</div>
-
 <script>
 let season = JSON.parse(localStorage.getItem("season") || "[]");
 
@@ -78,15 +70,19 @@ function process() {
 
   let event = { tournament:"", teamScore:0, archers:{} };
 
-  lines.forEach(line => {
-
-    if (line.includes("Tournament"))
+  // ✅ FIX: tournament = first non-empty line
+  for (let line of lines) {
+    if (line.trim().length > 5) {
       event.tournament = line.trim();
+      break;
+    }
+  }
+
+  lines.forEach(line => {
 
     if (line.includes("Team Score"))
       event.teamScore = parseInt(line.match(/\d+/)[0]);
 
-    // FIXED parsing (robust)
     if (/^\d{2,3}/.test(line)) {
       let clean = line.replace(/\(T\)/g,"");
       let parts = clean.trim().split(/\s+/);
@@ -94,7 +90,6 @@ function process() {
       let score = parseInt(parts[0]);
       let tens = parseInt(parts[1]);
 
-      // Find gender index (M or F)
       let genderIndex = parts.findIndex(p => p === "M" || p === "F");
 
       let nameParts = parts.slice(2, genderIndex - 1);
@@ -102,7 +97,7 @@ function process() {
 
       let gender = parts[genderIndex];
 
-      if (!name || name.length < 3) return;
+      if (!name) return;
 
       event.archers[name] = { score, tens, gender };
     }
@@ -154,7 +149,7 @@ function updateView() {
     if (e.archers[name]) {
       scores.push(e.archers[name].score);
       tens.push(e.archers[name].tens);
-      labels.push(e.tournament.substring(0,20));
+      labels.push(e.tournament || "Event");
     }
   });
 
@@ -163,7 +158,6 @@ function updateView() {
   document.getElementById("pr").textContent = Math.max(...scores);
 
   buildScoreChart(labels, scores, tens);
-  buildInsights(name, scores);
 }
 
 function buildScoreChart(labels, scores, tens) {
@@ -193,7 +187,7 @@ function buildScoreChart(labels, scores, tens) {
 function buildTeamChart() {
   if (window.teamChart) window.teamChart.destroy();
 
-  let labels = season.map(e => e.tournament.substring(0,15));
+  let labels = season.map(e => e.tournament || "Event");
   let scores = season.map(e => e.teamScore);
 
   window.teamChart = new Chart(document.getElementById("teamChart"), {
@@ -236,23 +230,6 @@ function buildRoster() {
                     <td>${r.avg.toFixed(1)}</td>`;
     table.appendChild(tr);
   });
-}
-
-function buildInsights(name, scores) {
-  let avg = scores.reduce((a,b)=>a+b,0)/scores.length;
-
-  let text = "";
-
-  if (avg > 260) text += "🔥 State-level<br>";
-  else if (avg > 240) text += "💪 Varsity<br>";
-
-  if (scores.length >= 2) {
-    let diff = scores[scores.length-1] - scores[scores.length-2];
-    if (diff >= 15) text += "🚀 Big improvement<br>";
-    if (diff <= -20) text += "⚠️ Major drop<br>";
-  }
-
-  document.getElementById("insight").innerHTML = text;
 }
 
 buildUI();
