@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>NASP Coach App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      background: #000;
+      color: white;
+      font-family: Arial;
+      padding: 15px;
+    }
+
+    textarea {
+      width: 100%;
+      height: 150px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      font-size: 18px;
+      background: #6A0DAD;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      margin-bottom: 15px;
+    }
+
+    .card {
+      background: #111;
+      padding: 15px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+    }
+
+    .big {
+      font-size: 32px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🏹 NASP Coach Dashboard</h2>
+
+<textarea id="input" placeholder="Paste NASP score page here..."></textarea>
+<button onclick="process()">PROCESS</button>
+
+<div class="card">
+  <div>Top Archer</div>
+  <div id="top" class="big">--</div>
+</div>
+
+<div class="card">
+  <div>Team Score</div>
+  <div id="team" class="big">--</div>
+</div>
+
+<div class="card">
+  <div>AI Insight</div>
+  <div id="insight">--</div>
+</div>
+
+<script>
+function process() {
+  const text = document.getElementById("input").value.split("\n");
+
+  let scores = [];
+  let teamScore = "";
+
+  text.forEach(line => {
+    if (line.includes("Team Score")) {
+      teamScore = line.match(/\d+/)[0];
+    }
+
+    if (/^\d{2,3}/.test(line)) {
+      let parts = line.trim().split(/\s+/);
+      scores.push({
+        name: parts[2] + " " + parts[3],
+        score: parseInt(parts[0])
+      });
+    }
+  });
+
+  // Top archer
+  scores.sort((a,b)=>b.score-a.score);
+  document.getElementById("top").textContent = scores[0]?.name + " (" + scores[0]?.score + ")";
+
+  document.getElementById("team").textContent = teamScore;
+
+  // AI Insight
+  let avg = scores.reduce((a,b)=>a+b.score,0)/scores.length;
+
+  let insight = "";
+  if (avg > 260) insight = "🔥 Elite Team Performance";
+  else if (avg > 230) insight = "💪 Strong Team";
+  else insight = "🎯 Developing Team";
+
+  document.getElementById("insight").textContent = insight;
+}
+</script>
+
+</body>
+</html>
