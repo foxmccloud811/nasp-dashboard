@@ -1,31 +1,49 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>NASP Coach App</title>
+  <title>NASP Elite Dashboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
     body { background:#000; color:white; font-family:Arial; padding:10px; }
+
     textarea { width:100%; height:120px; margin-bottom:10px; }
-    button { width:100%; padding:14px; font-size:18px; background:#6A0DAD; color:white; border:none; border-radius:10px; margin-bottom:10px;}
-    select { width:100%; padding:10px; margin-bottom:10px;}
-    .card { background:#111; padding:12px; border-radius:10px; margin-bottom:10px;}
-    .big { font-size:28px; font-weight:bold;}
-    canvas { background:#fff; border-radius:10px;}
-    table { width:100%; font-size:14px;}
-    td { padding:5px; border-bottom:1px solid #333;}
+
+    button {
+      width:100%; padding:14px; font-size:18px;
+      background:#6A0DAD; color:white; border:none;
+      border-radius:10px; margin-bottom:10px;
+    }
+
+    select { width:100%; padding:10px; margin-bottom:10px; }
+
+    .card {
+      background:#111; padding:12px;
+      border-radius:12px; margin-bottom:12px;
+      box-shadow: 0 0 10px rgba(106,13,173,0.5);
+    }
+
+    .big { font-size:32px; font-weight:bold; }
+
+    canvas { background:#111; border-radius:10px; }
+
+    table { width:100%; font-size:14px; }
+    td { padding:6px; border-bottom:1px solid #333; }
+
+    .male { color:#4da6ff; }
+    .female { color:#ff66cc; }
   </style>
 </head>
 
 <body>
 
-<h2>🏹 NASP Dashboard</h2>
+<h2>🏹 NASP Elite Dashboard</h2>
 
 <textarea id="input" placeholder="Paste NASP page..."></textarea>
 <button onclick="process()">ADD TO SEASON</button>
-<button onclick="resetData()">RESET SEASON</button>
+<button onclick="resetData()">RESET</button>
 
 <select id="archerSelect"></select>
 
@@ -35,86 +53,83 @@
 </div>
 
 <div class="card">
-  <div>Trend</div>
-  <div id="trend">--</div>
+  <canvas id="scoreChart"></canvas>
 </div>
 
 <div class="card">
-  <div>Team Score</div>
-  <div id="team" class="big">--</div>
+  <canvas id="teamChart"></canvas>
 </div>
 
 <div class="card">
-  <canvas id="chart"></canvas>
-</div>
-
-<div class="card">
-  <div>Roster (Avg)</div>
+  <div>Roster</div>
   <table id="roster"></table>
 </div>
 
 <div class="card">
-  <div>AI Insights</div>
+  <div>AI Coach Insights</div>
   <div id="insight"></div>
 </div>
 
 <script>
-let season = JSON.parse(localStorage.getItem("seasonData") || "[]");
+let season = JSON.parse(localStorage.getItem("season") || "[]");
 
 function process() {
   const lines = document.getElementById("input").value.split("\n");
 
-  let tournament = "";
-  let teamScore = 0;
   let event = { tournament:"", teamScore:0, archers:{} };
 
   lines.forEach(line => {
 
-    if (line.includes("Tournament")) {
-      tournament = line.trim();
-      event.tournament = tournament;
-    }
+    if (line.includes("Tournament"))
+      event.tournament = line.trim();
 
-    if (line.includes("Team Score")) {
-      teamScore = parseInt(line.match(/\d+/)[0]);
-      event.teamScore = teamScore;
-    }
+    if (line.includes("Team Score"))
+      event.teamScore = parseInt(line.match(/\d+/)[0]);
 
-    // FIXED parsing (correct positions)
+    // FIXED parsing (robust)
     if (/^\d{2,3}/.test(line)) {
-      let parts = line.trim().split(/\s+/);
+      let clean = line.replace(/\(T\)/g,"");
+      let parts = clean.trim().split(/\s+/);
 
       let score = parseInt(parts[0]);
-      let tens = parseInt(parts[2]); // skip "(T)"
-      let name = parts[3] + " " + parts[4]; // correct name
+      let tens = parseInt(parts[1]);
 
-      event.archers[name] = { score, tens };
+      // Find gender index (M or F)
+      let genderIndex = parts.findIndex(p => p === "M" || p === "F");
+
+      let nameParts = parts.slice(2, genderIndex - 1);
+      let name = nameParts.join(" ");
+
+      let gender = parts[genderIndex];
+
+      if (!name || name.length < 3) return;
+
+      event.archers[name] = { score, tens, gender };
     }
   });
 
   season.push(event);
-  localStorage.setItem("seasonData", JSON.stringify(season));
+  localStorage.setItem("season", JSON.stringify(season));
 
   buildUI();
 }
 
 function resetData() {
   localStorage.clear();
-  season = [];
   location.reload();
 }
 
 function buildUI() {
-  let allArchers = new Set();
+  let all = new Set();
 
   season.forEach(e => {
-    Object.keys(e.archers).forEach(a => allArchers.add(a));
+    Object.keys(e.archers).forEach(a => all.add(a));
   });
 
-  const select = document.getElementById("archerSelect");
+  let select = document.getElementById("archerSelect");
   select.innerHTML = "";
 
-  allArchers.forEach(a => {
+  all.forEach(a => {
     let opt = document.createElement("option");
     opt.value = a;
     opt.textContent = a;
@@ -122,53 +137,73 @@ function buildUI() {
   });
 
   select.onchange = updateView;
+
   buildRoster();
+  buildTeamChart();
   updateView();
 }
 
 function updateView() {
-  const name = document.getElementById("archerSelect").value;
+  let name = document.getElementById("archerSelect").value;
 
   let scores = [];
+  let tens = [];
   let labels = [];
 
   season.forEach(e => {
     if (e.archers[name]) {
       scores.push(e.archers[name].score);
+      tens.push(e.archers[name].tens);
       labels.push(e.tournament.substring(0,20));
     }
   });
 
-  if (scores.length === 0) return;
+  if (!scores.length) return;
 
-  let pr = Math.max(...scores);
-  document.getElementById("pr").textContent = pr;
+  document.getElementById("pr").textContent = Math.max(...scores);
 
-  if (scores.length >= 2) {
-    let diff = scores[scores.length-1] - scores[scores.length-2];
-    document.getElementById("trend").textContent =
-      diff > 0 ? "⬆ Improving" :
-      diff < 0 ? "⬇ Dropping" : "➡ Steady";
-  }
-
-  document.getElementById("team").textContent =
-    season[season.length-1].teamScore;
-
-  buildChart(labels, scores);
+  buildScoreChart(labels, scores, tens);
   buildInsights(name, scores);
 }
 
-function buildChart(labels, scores) {
-  if (window.chart) window.chart.destroy();
+function buildScoreChart(labels, scores, tens) {
+  if (window.scoreChart) window.scoreChart.destroy();
 
-  window.chart = new Chart(document.getElementById("chart"), {
-    type: "line",
+  window.scoreChart = new Chart(document.getElementById("scoreChart"), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          type: 'line',
+          label: 'Score',
+          data: scores,
+          borderWidth: 3
+        },
+        {
+          type: 'bar',
+          label: '10s',
+          data: tens
+        }
+      ]
+    }
+  });
+}
+
+function buildTeamChart() {
+  if (window.teamChart) window.teamChart.destroy();
+
+  let labels = season.map(e => e.tournament.substring(0,15));
+  let scores = season.map(e => e.teamScore);
+
+  window.teamChart = new Chart(document.getElementById("teamChart"), {
+    type: 'line',
     data: {
       labels: labels,
       datasets: [{
-        label: "Score",
+        label: "Team Score",
         data: scores,
-        borderWidth: 2
+        borderWidth: 3
       }]
     }
   });
@@ -183,20 +218,22 @@ function buildRoster() {
   season.forEach(e => {
     Object.entries(e.archers).forEach(([name, obj]) => {
       if (!stats[name]) stats[name] = [];
-      stats[name].push(obj.score);
+      stats[name].push(obj);
     });
   });
 
-  let rows = Object.entries(stats).map(([name, scores]) => {
-    let avg = scores.reduce((a,b)=>a+b,0)/scores.length;
-    return {name, avg};
+  let rows = Object.entries(stats).map(([name, arr]) => {
+    let avg = arr.reduce((a,b)=>a+b.score,0)/arr.length;
+    let gender = arr[0].gender;
+    return {name, avg, gender};
   });
 
   rows.sort((a,b)=>b.avg-a.avg);
 
   rows.forEach(r => {
     let tr = document.createElement("tr");
-    tr.innerHTML = `<td>${r.name}</td><td>${r.avg.toFixed(1)}</td>`;
+    tr.innerHTML = `<td class="${r.gender==='M'?'male':'female'}">${r.name}</td>
+                    <td>${r.avg.toFixed(1)}</td>`;
     table.appendChild(tr);
   });
 }
@@ -206,8 +243,8 @@ function buildInsights(name, scores) {
 
   let text = "";
 
-  if (avg > 260) text += "🔥 State-level shooter<br>";
-  else if (avg > 240) text += "💪 Strong varsity<br>";
+  if (avg > 260) text += "🔥 State-level<br>";
+  else if (avg > 240) text += "💪 Varsity<br>";
 
   if (scores.length >= 2) {
     let diff = scores[scores.length-1] - scores[scores.length-2];
