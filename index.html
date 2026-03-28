@@ -5,70 +5,132 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body{background:#000;color:white;font-family:Arial;margin:0}
-.tab{display:flex}
-.tab button{flex:1;padding:12px;background:#111;color:white;border:none}
-.active{background:#6A0DAD}
-.section{display:none;padding:10px}
-.show{display:block}
-.card{background:#111;padding:10px;margin:10px;border-radius:10px}
-.male{color:#4da6ff}
-.female{color:#ff66cc}
-table{width:100%} td{padding:6px;border-bottom:1px solid #333}
+body{
+  background:#0a0a0a;
+  color:white;
+  font-family:Arial;
+  margin:0;
+}
+
+.container{padding:12px; max-width:900px; margin:auto;}
+
+textarea{width:100%;height:100px;margin-bottom:10px;}
+
+button{
+  width:100%;
+  padding:12px;
+  margin-bottom:10px;
+  background:#6A0DAD;
+  color:white;
+  border:none;
+  border-radius:8px;
+}
+
+.card{
+  background:#111;
+  padding:12px;
+  margin-bottom:12px;
+  border-radius:12px;
+}
+
+h3{margin:0 0 8px 0;}
+
+select{
+  width:100%;
+  padding:8px;
+  margin-bottom:10px;
+  background:#000;
+  color:white;
+  border:1px solid #333;
+}
+
+table{width:100%;border-collapse:collapse;}
+td,th{padding:6px;border-bottom:1px solid #333;text-align:left;}
+
+.male{color:#4da6ff;}
+.female{color:#ff66cc;}
+
+.big{font-size:26px;font-weight:bold;}
+
+.grid{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+}
+
+@media(min-width:700px){
+  .grid{grid-template-columns:1fr 1fr;}
+}
 </style>
 </head>
 
 <body>
 
-<div class="tab">
-<button onclick="openTab(0)">Dashboard</button>
-<button onclick="openTab(1)">Roster</button>
-<button onclick="openTab(2)">Team</button>
-<button onclick="openTab(3)">Insights</button>
-</div>
+<div class="container">
 
-<div class="section show" id="tab0">
+<h2>🏹 NASP Elite Dashboard</h2>
 
-<textarea id="input"></textarea>
-<button onclick="process()">ADD</button>
-<button onclick="resetData()">RESET</button>
+<textarea id="input" placeholder="Paste NASP page here"></textarea>
+<button onclick="process()">ADD TO SEASON</button>
+<button onclick="resetData()">RESET SEASON</button>
+
+<div class="grid">
+
+<!-- ARCHER PANEL -->
+<div class="card">
+<h3>Archer Performance</h3>
 
 <select id="archer"></select>
 
-<div class="card">PR: <span id="pr"></span></div>
-<div class="card">Avg: <span id="avg"></span></div>
-<div class="card">Prediction: <span id="predict"></span></div>
+<div class="big">PR: <span id="pr"></span></div>
+<div>Average: <span id="avg"></span></div>
+<div>Total 10s: <span id="tens"></span></div>
+<div>Prediction: <span id="predict"></span></div>
 
-<canvas id="chart"></canvas>
+<canvas id="archerChart"></canvas>
+</div>
+
+<!-- TEAM PANEL -->
+<div class="card">
+<h3>Team Performance</h3>
+
+<select id="tournament"></select>
+
+<div id="teamStats"></div>
+
+<canvas id="teamChart"></canvas>
+</div>
 
 </div>
 
-<div class="section" id="tab1">
-<div class="card"><table id="roster"></table></div>
+<!-- ROSTER -->
+<div class="card">
+<h3>Roster</h3>
+<table id="roster">
+<tr>
+<th>Name</th>
+<th>Avg</th>
+<th>PR</th>
+<th>10s</th>
+<th>Consistency</th>
+</tr>
+</table>
 </div>
 
-<div class="section" id="tab2">
-<div class="card"><canvas id="teamChart"></canvas></div>
-<div class="card" id="teamStats"></div>
+<!-- INSIGHTS -->
+<div class="card">
+<h3>AI Coach Insights</h3>
+<div id="insight"></div>
 </div>
 
-<div class="section" id="tab3">
-<div class="card" id="insight"></div>
-<div class="card" id="top12"></div>
-<div class="card" id="improved"></div>
 </div>
 
 <script>
 let season=JSON.parse(localStorage.getItem("season")||"[]");
 
-function openTab(i){
-document.querySelectorAll(".section").forEach(s=>s.classList.remove("show"));
-document.getElementById("tab"+i).classList.add("show");
-}
-
 function process(){
 let lines=input.value.split("\n");
-let e={tournament:lines[0],teamScore:0,archers:{}};
+let e={tournament:lines.find(l=>l.trim())||"Event",teamScore:0,archers:{}};
 
 lines.forEach(l=>{
 if(l.includes("Team Score")) e.teamScore=parseInt(l.match(/\d+/)[0]);
@@ -76,8 +138,13 @@ if(l.includes("Team Score")) e.teamScore=parseInt(l.match(/\d+/)[0]);
 if(/^\d{2,3}/.test(l)){
 let p=l.replace("(T)","").split(/\s+/);
 let gi=p.findIndex(x=>x=="M"||x=="F");
+
 let name=p.slice(2,gi-1).join(" ");
-e.archers[name]={score:+p[0],tens:+p[1],gender:p[gi]};
+let score=+p[0];
+let tens=+p[1];
+let gender=p[gi];
+
+e.archers[name]={score,tens,gender};
 }
 });
 
@@ -89,22 +156,29 @@ build();
 function resetData(){localStorage.clear();location.reload();}
 
 function build(){
+
 let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))];
 archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
 
+tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
+
+archer.onchange=update;
+tournament.onchange=update;
+
 buildRoster();
-buildTeam();
-buildInsights();
+buildTeamChart();
 update();
 }
 
 function update(){
 let name=archer.value;
-let scores=[],labels=[];
+
+let scores=[],tens=[],labels=[];
 
 season.forEach(e=>{
 if(e.archers[name]){
 scores.push(e.archers[name].score);
+tens.push(e.archers[name].tens);
 labels.push(e.tournament);
 }
 });
@@ -112,14 +186,54 @@ labels.push(e.tournament);
 if(!scores.length)return;
 
 pr.innerText=Math.max(...scores);
-avg.innerText=(scores.reduce((a,b)=>a+b)/scores.length).toFixed(1);
+avg.innerText=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
+tens.innerText=tens.reduce((a,b)=>a+b);
 
-// prediction
 let trend=scores.length>1 ? scores.at(-1)-scores.at(-2):0;
 predict.innerText=Math.round(scores.at(-1)+trend);
 
-if(window.c)c.destroy();
-c=new Chart(chart,{type:'line',data:{labels,datasets:[{data:scores}]}})
+drawArcherChart(labels,scores,tens);
+drawTeamStats();
+drawInsights(name,scores);
+}
+
+function drawArcherChart(labels,scores,tens){
+if(window.aChart)aChart.destroy();
+
+aChart=new Chart(archerChart,{
+data:{
+labels,
+datasets:[
+{type:'line',label:'Score',data:scores,borderWidth:3},
+{type:'bar',label:'10s',data:tens}
+]
+}
+});
+}
+
+function drawTeamChart(){
+if(window.tChart)tChart.destroy();
+
+let labels=season.map(e=>e.tournament);
+let scores=season.map(e=>e.teamScore);
+
+tChart=new Chart(teamChart,{
+type:'line',
+data:{labels,datasets:[{label:'Team Score',data:scores,borderWidth:3}]}
+});
+}
+
+function buildTeamChart(){drawTeamChart();}
+
+function drawTeamStats(){
+let e=season[tournament.value];
+
+let avg=Math.round(Object.values(e.archers).reduce((a,b)=>a+b.score,0)/Object.keys(e.archers).length);
+
+teamStats.innerHTML=`
+Score: ${e.teamScore}<br>
+Average: ${avg}
+`;
 }
 
 function buildRoster(){
@@ -128,59 +242,46 @@ let stats={};
 season.forEach(e=>{
 Object.entries(e.archers).forEach(([n,o])=>{
 if(!stats[n])stats[n]=[];
-stats[n].push(o.score);
+stats[n].push(o);
 });
 });
 
-let rows=Object.entries(stats).map(([n,s])=>{
-let avg=s.reduce((a,b)=>a+b)/s.length;
-let pr=Math.max(...s);
-let variance=s.reduce((a,b)=>a+(b-avg)**2,0)/s.length;
+let rows=Object.entries(stats).map(([n,a])=>{
+let scores=a.map(x=>x.score);
+let avg=Math.round(scores.reduce((x,y)=>x+y)/scores.length);
+let pr=Math.max(...scores);
+let tens=a.reduce((x,y)=>x+y.tens,0);
+let variance=scores.reduce((x,y)=>x+(y-avg)**2,0)/scores.length;
 
-return {n,avg,pr,consistency:(100-variance).toFixed(0)};
+return {n,avg,pr,tens,consistency:Math.round(100-variance),gender:a[0].gender};
 }).sort((a,b)=>b.avg-a.avg);
 
-roster.innerHTML=rows.map(r=>`
-<tr><td>${r.n}</td><td>${r.avg.toFixed(1)}</td><td>${r.pr}</td><td>${r.consistency}</td></tr>`).join("");
+roster.innerHTML=`
+<tr><th>Name</th><th>Avg</th><th>PR</th><th>10s</th><th>Consistency</th></tr>
+` + rows.map(r=>`
+<tr>
+<td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
+<td>${r.avg}</td>
+<td>${r.pr}</td>
+<td>${r.tens}</td>
+<td>${r.consistency}</td>
+</tr>`).join("");
 }
 
-function buildTeam(){
-let labels=season.map(e=>e.tournament);
-let scores=season.map(e=>e.teamScore);
+function drawInsights(name,scores){
+let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
+let txt="";
 
-if(window.tc)tc.destroy();
-tc=new Chart(teamChart,{type:'line',data:{labels,datasets:[{data:scores}]}});
+if(avg>260) txt+="🔥 State Level<br>";
+else if(avg>240) txt+="💪 Strong Varsity<br>";
 
-teamStats.innerHTML=`
-PR: ${Math.max(...scores)}<br>
-Avg: ${(scores.reduce((a,b)=>a+b)/scores.length).toFixed(1)}
-`;
+if(scores.length>1){
+let diff=scores.at(-1)-scores.at(-2);
+if(diff>15) txt+="🚀 Big Improvement<br>";
+if(diff<-20) txt+="⚠️ Major Drop<br>";
 }
 
-function buildInsights(){
-let stats={};
-
-season.forEach(e=>{
-Object.entries(e.archers).forEach(([n,o])=>{
-if(!stats[n])stats[n]=[];
-stats[n].push(o.score);
-});
-});
-
-// top12
-let top=Object.entries(stats).map(([n,s])=>({
-n,avg:s.reduce((a,b)=>a+b)/s.length
-})).sort((a,b)=>b.avg-a.avg).slice(0,12);
-
-top12.innerHTML="Top 12:<br>"+top.map(t=>t.n).join("<br>");
-
-// improved
-let imp=Object.entries(stats).map(([n,s])=>{
-let diff=s.length>1 ? s.at(-1)-s.at(-2):0;
-return {n,diff};
-}).sort((a,b)=>b.diff-a.diff).slice(0,5);
-
-improved.innerHTML="Most Improved:<br>"+imp.map(i=>`${i.n} (+${i.diff})`).join("<br>");
+insight.innerHTML=txt;
 }
 
 build();
