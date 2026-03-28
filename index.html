@@ -1,5 +1,29 @@
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script>
-let season = JSON.parse(localStorage.getItem("season") || "[]");
+  function loadData(){
+  db.collection("season").get().then(snapshot=>{
+    season = [];
+
+    snapshot.forEach(doc=>{
+      season.push(doc.data());
+    });
+
+    build();
+  });
+}
+const firebaseConfig = {
+  apiKey: "AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
+  authDomain: "nasp-dashboard.firebaseapp.com",
+  projectId: "nasp-dashboard",
+  storageBucket: "nasp-dashboard.firebasestorage.app",
+  messagingSenderId: "355731537969",
+  appId: "1:355731537969:web:107b5a6646944101acd510"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();  
+let season = [];
 
 function process(){
   let lines = input.value.split("\n");
@@ -25,8 +49,9 @@ function process(){
     }
   });
 
-  season.push(e);
-  localStorage.setItem("season", JSON.stringify(season));
+  db.collection("season").add(e);
+
+season.push(e);
   build();
 }
 
@@ -351,12 +376,24 @@ e.archers[name]={score,tens,gender};
 }
 });
 
+db.collection("season").add(e);
+
 season.push(e);
-localStorage.setItem("season",JSON.stringify(season));
 build();
 }
 
-function resetData(){localStorage.clear();location.reload();}
+function resetData(){
+  if(!confirm("Delete ALL season data?")) return;
+
+  db.collection("season").get().then(snapshot=>{
+    snapshot.forEach(doc=>{
+      db.collection("season").doc(doc.id).delete();
+    });
+
+    season = [];
+    build();
+  });
+}
 
 function build(){
 
@@ -531,7 +568,7 @@ if(diff<-20) txt+="⚠️ Major Drop<br>";
 insight.innerHTML=txt;
 }
 
-build();
+loadData();
 </script>
 
 </body>
