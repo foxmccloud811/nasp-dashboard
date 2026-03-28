@@ -2,6 +2,9 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6A0DAD">
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
@@ -14,19 +17,24 @@ body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
 button{width:100%;padding:10px;margin-bottom:10px;background:#6A0DAD;color:white;border:none;border-radius:8px;}
 textarea{width:100%;height:100px;margin-bottom:10px;}
 .card{background:#111;padding:16px;border-radius:16px;margin-bottom:12px;}
-.male{color:#4da6ff;}
-.female{color:#ff66cc;}
 .grid{display:grid;grid-template-columns:1fr;gap:12px;}
 @media(min-width:900px){.grid{grid-template-columns:1fr 1fr;}}
+.male{color:#4da6ff;}
+.female{color:#ff66cc;}
 </style>
 </head>
 
 <body>
 <div class="container">
 
-<h2>🏹 Recruit-Level NASP Dashboard</h2>
+<h2>🏹 NASP Elite App</h2>
 
-<!-- LOGIN -->
+<div class="card">
+<select id="teamSelect" onchange="loadData()"></select>
+<input id="newTeam" placeholder="New Team Name">
+<button onclick="createTeam()">Create Team</button>
+</div>
+
 <div id="loginCard" class="card">
 <input id="email" placeholder="Email">
 <input id="password" type="password" placeholder="Password">
@@ -36,13 +44,12 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 <div id="adminPanel" style="display:none;">
 <textarea id="input" placeholder="Paste NASP page"></textarea>
 <button onclick="process()">ADD</button>
-<button onclick="resetData()">RESET</button>
 </div>
 
 <div class="grid">
 
 <div class="card">
-<h3>Archer Profile</h3>
+<h3>Archer</h3>
 <select id="archer"></select>
 <div id="profile"></div>
 <canvas id="archerChart"></canvas>
@@ -56,13 +63,13 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 </div>
 
 <div class="card">
-<h3>🏹 Optimal Lineup</h3>
-<div id="lineup"></div>
+<h3>Top 12</h3>
+<div id="top12"></div>
 </div>
 
 <div class="card">
-<h3>📊 Coach Decision Panel</h3>
-<div id="decision"></div>
+<h3>Lineup</h3>
+<div id="lineup"></div>
 </div>
 
 </div>
@@ -76,11 +83,10 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 
 <script>
 
-// Firebase
 const firebaseConfig = {
-  apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
-  authDomain:"nasp-dashboard.firebaseapp.com",
-  projectId:"nasp-dashboard"
+apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
+authDomain:"nasp-dashboard.firebaseapp.com",
+projectId:"nasp-dashboard"
 };
 firebase.initializeApp(firebaseConfig);
 
@@ -88,226 +94,204 @@ const db=firebase.firestore();
 const auth=firebase.auth();
 
 let season=[];
+let aChart,tChart;
 
 // LOGIN
 function login(){
-  auth.signInWithEmailAndPassword(email.value,password.value);
+auth.signInWithEmailAndPassword(email.value,password.value);
 }
 
 auth.onAuthStateChanged(u=>{
-  if(u){
-    loginCard.style.display="none";
-    adminPanel.style.display="block";
-  }
+if(u){
+loginCard.style.display="none";
+adminPanel.style.display="block";
+}
 });
+
+// TEAM CREATE
+function createTeam(){
+let name=newTeam.value.trim();
+if(!name)return;
+
+db.collection("teams").doc(name).set({created:true})
+.then(loadTeams);
+}
+
+// LOAD TEAMS
+function loadTeams(){
+db.collection("teams").get().then(s=>{
+let teams=[];
+s.forEach(d=>teams.push(d.id));
+if(!teams.length)teams=["Default"];
+
+teamSelect.innerHTML=teams.map(t=>`<option>${t}</option>`).join("");
+loadData();
+});
+}
 
 // PROCESS
 function process(){
-  let lines=input.value.split("\n");
-  let e={tournament:lines[0],teamScore:0,archers:{}};
+let lines=input.value.split("\n");
 
-  lines.forEach(l=>{
-    if(l.includes("Team Score")) e.teamScore=parseInt(l.match(/\d+/)[0]);
+let e={tournament:lines[0],teamScore:0,archers:{}};
 
-    if(/^\d{2,3}/.test(l)){
-      let p=l.replace("(T)","").split(/\s+/);
-      let gi=p.findIndex(x=>x=="M"||x=="F");
-      let name=p.slice(2,gi-1).join(" ");
+lines.forEach(l=>{
+if(l.includes("Team Score")) e.teamScore=parseInt(l.match(/\d+/)[0]);
 
-      e.archers[name]={score:+p[0],tens:+p[1],gender:p[gi]};
-    }
-  });
+if(/^\d{2,3}/.test(l)){
+let p=l.replace("(T)","").split(/\s+/);
+let gi=p.findIndex(x=>x=="M"||x=="F");
 
-  db.collection("season").add(e).then(loadData);
+let name=p.slice(2,gi-1).join(" ");
+e.archers[name]={score:+p[0],tens:+p[1],gender:p[gi]};
+}
+});
+
+let team=teamSelect.value;
+
+db.collection("teams").doc(team).collection("season").add(e).then(loadData);
 }
 
-// LOAD
+// LOAD DATA
 function loadData(){
-  db.collection("season").get().then(s=>{
-    season=[];
-    s.forEach(d=>season.push(d.data()));
-    build();
-  });
+let team=teamSelect.value;
+
+db.collection("teams").doc(team).collection("season")
+.get().then(s=>{
+season=[];
+s.forEach(d=>season.push(d.data()));
+build();
+});
 }
 
 // BUILD
 function build(){
 
-  let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
+let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
 
-  archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
-  tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
+archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
+tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
 
-  archer.onchange=update;
-  tournament.onchange=update;
+archer.onchange=update;
+tournament.onchange=update;
 
-  buildRoster();
-  buildLineup();
-  buildDecision();
-  drawTeamChart();
-  update();
+buildRoster();
+buildTop12();
+buildLineup();
+drawTeamChart();
+update();
 }
 
-// PROFILE + INSIGHTS
+// UPDATE
 function update(){
+let name=archer.value;
 
-  let name=archer.value;
+let scores=[],tens=[];
 
-  let scores=[],tens=[];
-  season.forEach(e=>{
-    if(e.archers[name]){
-      scores.push(e.archers[name].score);
-      tens.push(e.archers[name].tens);
-    }
-  });
+season.forEach(e=>{
+if(e.archers[name]){
+scores.push(e.archers[name].score);
+tens.push(e.archers[name].tens);
+}
+});
 
-  if(!scores.length)return;
+if(!scores.length)return;
 
-  let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-  let pr=Math.max(...scores);
+profile.innerHTML=`Avg: ${Math.round(scores.reduce((a,b)=>a+b)/scores.length)}<br>PR: ${Math.max(...scores)}`;
 
-  let trend=scores.length>=3 ? scores.at(-1)-scores.at(-3):0;
-
-  let rating =
-    avg>=260?"⭐⭐⭐⭐⭐ Elite":
-    avg>=240?"⭐⭐⭐⭐ Strong":
-    avg>=220?"⭐⭐⭐ Developing":
-    avg>=200?"⭐⭐ Inconsistent":
-    "⭐ Needs Work";
-
-  profile.innerHTML=`
-  Avg: ${avg}<br>
-  PR: ${pr}<br>
-  Rating: ${rating}<br>
-  Trend: ${trend>5?"📈 Rising":trend<-5?"📉 Falling":"➡️ Stable"}
-  `;
-
-  drawArcherChart(scores,tens);
+drawArcherChart(scores,tens);
 }
 
-// ARCHER CHART
-let aChart=null;
+// CHARTS
 function drawArcherChart(scores,tens){
+if(aChart)aChart.destroy();
 
-  if(aChart) aChart.destroy();
-
-  aChart=new Chart(archerChart,{
-    data:{
-      labels:scores.map((_,i)=>i+1),
-      datasets:[
-        {type:'line',data:scores,borderColor:'#6A0DAD',tension:0.4},
-        {type:'bar',data:tens,yAxisID:'y1',backgroundColor:'white'}
-      ]
-    },
-    options:{
-      scales:{y:{},y1:{position:'right'}}
-    }
-  });
+aChart=new Chart(archerChart,{
+data:{
+labels:scores.map((_,i)=>i+1),
+datasets:[
+{type:'line',data:scores,borderColor:'#6A0DAD'},
+{type:'bar',data:tens,yAxisID:'y1',backgroundColor:'white'}
+]
+}
+});
 }
 
-// TEAM
-let tChart=null;
 function drawTeamChart(){
+if(tChart)tChart.destroy();
 
-  if(tChart) tChart.destroy();
+let labels=season.map(e=>e.tournament);
+let scores=season.map(e=>e.teamScore);
 
-  let labels=season.map(e=>e.tournament);
-  let scores=season.map(e=>e.teamScore);
+tChart=new Chart(teamChart,{type:'line',data:{labels,datasets:[{data:scores}]}});
 
-  tChart=new Chart(teamChart,{
-    type:'line',
-    data:{labels,datasets:[{data:scores,borderColor:'#6A0DAD'}]}
-  });
+let e=season[tournament.value];
+if(e){
+teamStats.innerHTML=`Score: ${e.teamScore}`;
+}
+}
 
-  let e=season[tournament.value];
-  if(e){
-    let avg=Math.round(Object.values(e.archers)
-      .reduce((a,b)=>a+b.score,0)/Object.keys(e.archers).length);
+// TOP 12
+function buildTop12(){
+let list=[];
 
-    teamStats.innerHTML=`Score: ${e.teamScore}<br>Avg: ${avg}`;
-  }
+season.forEach(e=>{
+Object.entries(e.archers).forEach(([n,o])=>{
+list.push({name:n,score:o.score});
+});
+});
+
+list.sort((a,b)=>b.score-a.score);
+
+top12.innerHTML=list.slice(0,12).map(p=>`${p.name} ${p.score}`).join("<br>");
 }
 
 // LINEUP
 function buildLineup(){
+let stats={};
 
-  let stats={};
+season.forEach(e=>{
+Object.entries(e.archers).forEach(([n,o])=>{
+if(!stats[n])stats[n]=[];
+stats[n].push(o.score);
+});
+});
 
-  season.forEach(e=>{
-    Object.entries(e.archers).forEach(([n,o])=>{
-      if(!stats[n])stats[n]=[];
-      stats[n].push(o.score);
-    });
-  });
+let list=Object.entries(stats).map(([n,s])=>({name:n,avg:s.reduce((a,b)=>a+b)/s.length}))
+.sort((a,b)=>b.avg-a.avg);
 
-  let list=Object.entries(stats).map(([n,s])=>{
-    return {name:n,avg:s.reduce((a,b)=>a+b)/s.length};
-  }).sort((a,b)=>b.avg-a.avg);
-
-  let top=list.slice(0,12);
-  let bench=list.slice(12,16);
-
-  let total=Math.round(top.reduce((a,b)=>a+b.avg,0));
-  let gap=Math.round(total - bench.reduce((a,b)=>a+b.avg,0));
-
-  lineup.innerHTML=`
-  Projected: ${total}<br>
-  Depth Gap: ${gap}<br><br>
-  ${top.map(p=>p.name).join("<br>")}
-  `;
-}
-
-// DECISION PANEL
-function buildDecision(){
-
-  let msg="";
-
-  season.forEach((e,i)=>{
-    if(i===0)return;
-
-    Object.entries(e.archers).forEach(([n,o])=>{
-      let prev=season[i-1].archers[n]?.score;
-      if(prev && o.score-prev>15){
-        msg+=`${n} trending UP<br>`;
-      }
-      if(prev && prev-o.score>15){
-        msg+=`${n} trending DOWN<br>`;
-      }
-    });
-  });
-
-  decision.innerHTML=msg || "No major changes";
+let top=list.slice(0,12);
+lineup.innerHTML=top.map(p=>p.name).join("<br>");
 }
 
 // ROSTER
 function buildRoster(){
+let stats={};
 
-  let stats={};
+season.forEach(e=>{
+Object.entries(e.archers).forEach(([n,o])=>{
+if(!stats[n])stats[n]=[];
+stats[n].push(o.score);
+});
+});
 
-  season.forEach(e=>{
-    Object.entries(e.archers).forEach(([n,o])=>{
-      if(!stats[n])stats[n]=[];
-      stats[n].push(o);
-    });
-  });
+let rows=Object.entries(stats).map(([n,s])=>{
+return {n,avg:Math.round(s.reduce((a,b)=>a+b)/s.length)};
+}).sort((a,b)=>b.avg-a.avg);
 
-  let rows=Object.entries(stats).map(([n,a])=>{
-    let scores=a.map(x=>x.score);
-    return {
-      n,
-      avg:Math.round(scores.reduce((x,y)=>x+y)/scores.length),
-      pr:Math.max(...scores)
-    };
-  }).sort((a,b)=>b.avg-a.avg);
-
-  roster.innerHTML=rows.map(r=>`
-  <tr><td>${r.n}</td><td>${r.avg}</td><td>${r.pr}</td></tr>
-  `).join("");
+roster.innerHTML=rows.map(r=>`<tr><td>${r.n}</td><td>${r.avg}</td></tr>`).join("");
 }
 
 // START
-loadData();
+loadTeams();
 
 </script>
+
+<script>
+if ('serviceWorker' in navigator) {
+navigator.serviceWorker.register('sw.js');
+}
+</script>
+
 </body>
 </html>
