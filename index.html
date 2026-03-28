@@ -2,6 +2,303 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
+<style>
+body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
+.container{padding:12px;max-width:1100px;margin:auto;}
+.card{background:#111;padding:14px;border-radius:12px;margin-bottom:12px;}
+.grid{display:grid;grid-template-columns:1fr;gap:12px;}
+@media(min-width:800px){.grid{grid-template-columns:1fr 1fr;}}
+
+button{width:100%;padding:10px;background:#6A0DAD;color:white;border:none;border-radius:8px;margin-top:6px;}
+textarea{width:100%;height:100px;margin-bottom:10px;}
+
+.male{color:#4da6ff;}
+.female{color:#ff66cc;}
+
+table{width:100%;border-collapse:collapse;}
+td,th{padding:8px;border-bottom:1px solid #333;}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>🏹 NASP Elite Dashboard</h2>
+
+<div id="loginCard" class="card">
+<input id="email" placeholder="Email">
+<input id="password" type="password" placeholder="Password">
+<button onclick="login()">Coach Login</button>
+</div>
+
+<div id="adminPanel" style="display:none;">
+<div class="card">
+<textarea id="input" placeholder="Paste NASP page"></textarea>
+<button onclick="process()">ADD TO SEASON</button>
+<button onclick="resetSeason()">RESET</button>
+</div>
+</div>
+
+<div class="grid">
+
+<div class="card">
+<h3>Archer</h3>
+<select id="archer"></select>
+<div id="profile"></div>
+<canvas id="archerChart"></canvas>
+</div>
+
+<div class="card">
+<h3>Team</h3>
+<select id="tournament"></select>
+<div id="teamStats"></div>
+<canvas id="teamChart"></canvas>
+</div>
+
+</div>
+
+<div class="card">
+<h3>Roster</h3>
+<table id="roster"></table>
+</div>
+
+</div>
+
+<script>
+
+// 🔐 CONFIG
+const COACH_EMAIL="william@sheppardfamily.net";
+
+const firebaseConfig={
+apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
+authDomain:"nasp-dashboard.firebaseapp.com",
+projectId:"nasp-dashboard"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db=firebase.firestore();
+const auth=firebase.auth();
+
+let season=[],aChart,tChart;
+
+// 🔐 LOGIN
+function login(){
+auth.signInWithEmailAndPassword(email.value,password.value)
+.catch(()=>alert("Login failed"));
+}
+
+auth.onAuthStateChanged(user=>{
+if(user && user.email===COACH_EMAIL){
+loginCard.style.display="none";
+adminPanel.style.display="block";
+}
+});
+
+// 🔄 RESET
+function resetSeason(){
+let team="default";
+db.collection("teams").doc(team).collection("season").get().then(s=>{
+s.forEach(d=>d.ref.delete());
+}).then(loadData);
+}
+
+// 📥 PROCESS DATA (FIXED)
+function process(){
+
+let lines=input.value.split("\n");
+
+let e={tournament:lines[0]||"Event",teamScore:0,teamTens:0,archers:{}};
+
+lines.forEach(l=>{
+
+if(l.includes("Team Score")){
+e.teamScore=parseInt(l.match(/\d+/)?.[0]||0);
+let t=l.match(/\((\d+)\)/);
+e.teamTens=t?+t[1]:0;
+}
+
+if(/^\d{2,3}/.test(l)){
+
+let p=l.replace("(T)","").split(/\s+/);
+let gi=p.findIndex(x=>x=="M"||x=="F");
+
+if(gi<3)return;
+
+let name=p.slice(2,gi-1).join(" ").trim();
+if(!name)return;
+
+let score=parseInt(p[0]);
+if(isNaN(score))return;
+
+let tens=parseInt(p[1])||0;
+let gender=p[gi];
+
+e.archers[name]={score,tens,gender};
+}
+});
+
+// 🚫 SAFETY CHECK
+if(Object.keys(e.archers).length===0){
+alert("Paste failed — no valid archers found");
+return;
+}
+
+// SAVE
+db.collection("teams").doc("default").collection("season").add(e).then(loadData);
+
+}
+
+// 📥 LOAD DATA
+function loadData(){
+db.collection("teams").doc("default").collection("season").get().then(s=>{
+season=[];
+s.forEach(d=>season.push(d.data()));
+build();
+});
+}
+
+// 🏗 BUILD UI
+function build(){
+
+let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
+
+archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
+tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
+
+archer.onchange=update;
+tournament.onchange=()=>{update();buildRoster();drawTeam();};
+
+update();
+buildRoster();
+drawTeam();
+}
+
+// 📊 ARCHER
+function update(){
+
+let name=archer.value;
+let scores=[],tens=[],labels=[];
+
+season.forEach(e=>{
+if(e.archers[name]){
+scores.push(e.archers[name].score);
+tens.push(e.archers[name].tens);
+labels.push(e.tournament);
+}
+});
+
+if(!scores.length)return;
+
+let pr=Math.max(...scores);
+
+profile.innerHTML=`Avg ${Math.round(scores.reduce((a,b)=>a+b)/scores.length)} | PR ${pr}`;
+
+if(aChart)aChart.destroy();
+
+aChart=new Chart(archerChart,{
+data:{
+labels,
+datasets:[
+{
+type:'line',
+label:'Score',
+data:scores,
+borderColor:'#6A0DAD'
+},
+{
+type:'bar',
+label:'10s',
+data:tens,
+backgroundColor:'white',
+yAxisID:'y1'
+}
+]
+},
+options:{
+scales:{
+y:{title:{display:true,text:'Score'}},
+y1:{
+position:'right',
+grid:{drawOnChartArea:false},
+title:{display:true,text:'10s'}
+}
+}
+}
+});
+}
+
+// 📊 TEAM
+function drawTeam(){
+
+if(tChart)tChart.destroy();
+
+tChart=new Chart(teamChart,{
+type:'line',
+data:{
+labels:season.map(e=>e.tournament),
+datasets:[{
+label:'Team Score',
+data:season.map(e=>e.teamScore),
+borderColor:'#6A0DAD'
+}]
+}
+});
+
+let e=season[tournament.value];
+teamStats.innerHTML=e?`Score ${e.teamScore} | 10s ${e.teamTens}`:"";
+}
+
+// 📋 ROSTER
+function buildRoster(){
+
+let sel=season[tournament.value];
+
+roster.innerHTML=`
+<tr><th>Name</th><th>${sel?.tournament||""}</th><th>Avg</th><th>PR</th></tr>
+`;
+
+let stats={};
+
+season.forEach(e=>{
+Object.entries(e.archers).forEach(([n,o])=>{
+if(!stats[n])stats[n]=[];
+stats[n].push(o);
+});
+});
+
+Object.entries(stats).forEach(([n,a])=>{
+
+let avg=Math.round(a.reduce((x,y)=>x+y.score,0)/a.length);
+let pr=Math.max(...a.map(x=>x.score));
+let cur=sel?.archers[n]?.score||"-";
+
+roster.innerHTML+=`
+<tr>
+<td class="${a[0].gender=='M'?'male':'female'}">${n}</td>
+<td>${cur}</td>
+<td>${avg}</td>
+<td>${pr}</td>
+</tr>`;
+});
+}
+
+// 🚀 INIT
+loadData();
+
+</script>
+
+</body>
+</html><!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#6A0DAD">
 
