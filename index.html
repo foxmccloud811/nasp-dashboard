@@ -14,40 +14,46 @@
 <style>
 body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
 .container{padding:14px; max-width:1200px; margin:auto;}
+.card{background:#111;padding:16px;border-radius:16px;margin-bottom:12px;}
 button{width:100%;padding:10px;margin-bottom:10px;background:#6A0DAD;color:white;border:none;border-radius:8px;}
 textarea{width:100%;height:100px;margin-bottom:10px;}
-.card{background:#111;padding:16px;border-radius:16px;margin-bottom:12px;}
 .grid{display:grid;grid-template-columns:1fr;gap:12px;}
 @media(min-width:900px){.grid{grid-template-columns:1fr 1fr;}}
 .male{color:#4da6ff;}
 .female{color:#ff66cc;}
+th{cursor:pointer;color:#aaa;}
 </style>
 </head>
 
 <body>
 <div class="container">
 
-<h2>🏹 NASP Elite App</h2>
+<h2>🏹 NASP Elite Dashboard</h2>
 
+<!-- TEAM -->
 <div class="card">
 <select id="teamSelect" onchange="loadData()"></select>
 <input id="newTeam" placeholder="New Team Name">
 <button onclick="createTeam()">Create Team</button>
 </div>
 
+<!-- LOGIN -->
 <div id="loginCard" class="card">
 <input id="email" placeholder="Email">
 <input id="password" type="password" placeholder="Password">
 <button onclick="login()">Coach Login</button>
 </div>
 
+<!-- ADMIN -->
 <div id="adminPanel" style="display:none;">
 <textarea id="input" placeholder="Paste NASP page"></textarea>
 <button onclick="process()">ADD</button>
+<button onclick="resetSeason()">RESET SEASON</button>
 </div>
 
 <div class="grid">
 
+<!-- ARCHER -->
 <div class="card">
 <h3>Archer</h3>
 <select id="archer"></select>
@@ -55,6 +61,7 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 <canvas id="archerChart"></canvas>
 </div>
 
+<!-- TEAM -->
 <div class="card">
 <h3>Team</h3>
 <select id="tournament"></select>
@@ -62,20 +69,25 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 <canvas id="teamChart"></canvas>
 </div>
 
+<!-- TOP 12 -->
 <div class="card">
 <h3>Top 12</h3>
+<label><input type="radio" name="mode" value="season" checked onchange="buildTop12()"> Season</label>
+<label><input type="radio" name="mode" value="event" onchange="buildTop12()"> Tournament</label>
 <div id="top12"></div>
 </div>
 
+<!-- INSIGHTS -->
 <div class="card">
-<h3>Lineup</h3>
-<div id="lineup"></div>
+<h3>Coach Insights</h3>
+<div id="insight"></div>
 </div>
 
 </div>
 
+<!-- ROSTER -->
 <div class="card">
-<h3>Roster</h3>
+<h3 id="rosterTitle">Roster</h3>
 <table id="roster"></table>
 </div>
 
@@ -83,7 +95,7 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 
 <script>
 
-const firebaseConfig = {
+const firebaseConfig={
 apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
 authDomain:"nasp-dashboard.firebaseapp.com",
 projectId:"nasp-dashboard"
@@ -95,69 +107,72 @@ const auth=firebase.auth();
 
 let season=[];
 let aChart,tChart;
+let sortKey="avg";
 
 // LOGIN
 function login(){
 auth.signInWithEmailAndPassword(email.value,password.value);
 }
-
 auth.onAuthStateChanged(u=>{
-if(u){
-loginCard.style.display="none";
-adminPanel.style.display="block";
-}
+if(u){loginCard.style.display="none";adminPanel.style.display="block";}
 });
 
-// TEAM CREATE
+// TEAM
 function createTeam(){
-let name=newTeam.value.trim();
-if(!name)return;
-
-db.collection("teams").doc(name).set({created:true})
-.then(loadTeams);
+let n=newTeam.value.trim();
+if(!n)return;
+db.collection("teams").doc(n).set({created:true}).then(loadTeams);
 }
 
-// LOAD TEAMS
 function loadTeams(){
 db.collection("teams").get().then(s=>{
 let teams=[];
 s.forEach(d=>teams.push(d.id));
 if(!teams.length)teams=["Default"];
-
 teamSelect.innerHTML=teams.map(t=>`<option>${t}</option>`).join("");
 loadData();
 });
 }
 
+// RESET
+function resetSeason(){
+if(!confirm("Delete entire season?"))return;
+
+let team=teamSelect.value;
+
+db.collection("teams").doc(team).collection("season").get().then(s=>{
+s.forEach(doc=>doc.ref.delete());
+}).then(loadData);
+}
+
 // PROCESS
 function process(){
 let lines=input.value.split("\n");
-
-let e={tournament:lines[0],teamScore:0,archers:{}};
+let e={tournament:lines[0],teamScore:0,teamTens:0,archers:{}};
 
 lines.forEach(l=>{
-if(l.includes("Team Score")) e.teamScore=parseInt(l.match(/\d+/)[0]);
+if(l.includes("Team Score")){
+e.teamScore=parseInt(l.match(/\d+/)[0]);
+e.teamTens=parseInt(l.match(/\((\d+)\)/)[1]);
+}
 
 if(/^\d{2,3}/.test(l)){
 let p=l.replace("(T)","").split(/\s+/);
 let gi=p.findIndex(x=>x=="M"||x=="F");
-
 let name=p.slice(2,gi-1).join(" ");
 e.archers[name]={score:+p[0],tens:+p[1],gender:p[gi]};
 }
 });
 
 let team=teamSelect.value;
-
 db.collection("teams").doc(team).collection("season").add(e).then(loadData);
 }
 
-// LOAD DATA
+// LOAD
 function loadData(){
 let team=teamSelect.value;
 
-db.collection("teams").doc(team).collection("season")
-.get().then(s=>{
+db.collection("teams").doc(team).collection("season").get().then(s=>{
 season=[];
 s.forEach(d=>season.push(d.data()));
 build();
@@ -173,83 +188,104 @@ archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
 tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
 
 archer.onchange=update;
-tournament.onchange=update;
+tournament.onchange=()=>{
+update();
+buildRoster();
+buildTop12();
+drawTeamChart();
+};
 
 buildRoster();
 buildTop12();
-buildLineup();
 drawTeamChart();
 update();
 }
 
-// UPDATE
+// ARCHER
 function update(){
-let name=archer.value;
 
-let scores=[],tens=[];
+let name=archer.value;
+let scores=[],tens=[],labels=[];
 
 season.forEach(e=>{
 if(e.archers[name]){
 scores.push(e.archers[name].score);
 tens.push(e.archers[name].tens);
+labels.push(e.tournament);
 }
 });
 
 if(!scores.length)return;
 
-profile.innerHTML=`Avg: ${Math.round(scores.reduce((a,b)=>a+b)/scores.length)}<br>PR: ${Math.max(...scores)}`;
+let pr=Math.max(...scores);
+profile.innerHTML=`Avg: ${Math.round(scores.reduce((a,b)=>a+b)/scores.length)}<br>PR: ${pr}`;
 
-drawArcherChart(scores,tens);
-}
-
-// CHARTS
-function drawArcherChart(scores,tens){
 if(aChart)aChart.destroy();
 
 aChart=new Chart(archerChart,{
 data:{
-labels:scores.map((_,i)=>i+1),
+labels,
 datasets:[
-{type:'line',data:scores,borderColor:'#6A0DAD'},
-{type:'bar',data:tens,yAxisID:'y1',backgroundColor:'white'}
+{
+type:'line',
+label:'Score',
+data:scores,
+borderColor:'#6A0DAD',
+tension:.4,
+pointRadius:scores.map(s=>s===pr?6:3),
+pointBackgroundColor:scores.map(s=>s===pr?'gold':'#6A0DAD')
+},
+{
+type:'bar',
+label:'10s',
+data:tens,
+yAxisID:'y1',
+backgroundColor:'white'
+}
 ]
+},
+options:{
+plugins:{tooltip:{callbacks:{label:(ctx)=>ctx.raw}}},
+scales:{y:{},y1:{position:'right'}}
 }
 });
+
+// insights
+let last=scores.at(-1),prev=scores.at(-2)||last;
+let msg=`Avg ${Math.round(scores.reduce((a,b)=>a+b)/scores.length)}. `;
+msg+= last>prev?"Trending up. ":"Stable. ";
+if(last-prev>15) msg+="Big jump.";
+if(prev-last>15) msg+="Major drop.";
+insight.innerText=msg;
 }
 
+// TEAM
 function drawTeamChart(){
 if(tChart)tChart.destroy();
 
 let labels=season.map(e=>e.tournament);
 let scores=season.map(e=>e.teamScore);
 
-tChart=new Chart(teamChart,{type:'line',data:{labels,datasets:[{data:scores}]}});
+tChart=new Chart(teamChart,{
+type:'line',
+data:{labels,datasets:[{data:scores,borderColor:'#6A0DAD'}]}
+});
 
 let e=season[tournament.value];
 if(e){
-teamStats.innerHTML=`Score: ${e.teamScore}`;
+teamStats.innerHTML=`Score: ${e.teamScore} | 10s: ${e.teamTens}`;
 }
 }
 
 // TOP 12
 function buildTop12(){
+
+let mode=document.querySelector('input[name="mode"]:checked').value;
+
 let list=[];
 
-season.forEach(e=>{
-Object.entries(e.archers).forEach(([n,o])=>{
-list.push({name:n,score:o.score});
-});
-});
-
-list.sort((a,b)=>b.score-a.score);
-
-top12.innerHTML=list.slice(0,12).map(p=>`${p.name} ${p.score}`).join("<br>");
-}
-
-// LINEUP
-function buildLineup(){
+if(mode==="season"){
 let stats={};
-
 season.forEach(e=>{
 Object.entries(e.archers).forEach(([n,o])=>{
 if(!stats[n])stats[n]=[];
@@ -257,30 +293,71 @@ stats[n].push(o.score);
 });
 });
 
-let list=Object.entries(stats).map(([n,s])=>({name:n,avg:s.reduce((a,b)=>a+b)/s.length}))
-.sort((a,b)=>b.avg-a.avg);
+list=Object.entries(stats).map(([n,s])=>({name:n,val:Math.round(s.reduce((a,b)=>a+b)/s.length)}));
 
-let top=list.slice(0,12);
-lineup.innerHTML=top.map(p=>p.name).join("<br>");
+}else{
+let e=season[tournament.value];
+if(!e)return;
+
+list=Object.entries(e.archers).map(([n,o])=>({name:n,val:o.score}));
+}
+
+list.sort((a,b)=>b.val-a.val);
+
+top12.innerHTML=list.slice(0,12).map((p,i)=>`${i+1}. ${p.name} - ${p.val}`).join("<br>");
 }
 
 // ROSTER
 function buildRoster(){
+
+let selected=season[tournament.value];
+rosterTitle.innerText=`Roster - ${selected?.tournament||""}`;
+
 let stats={};
 
 season.forEach(e=>{
 Object.entries(e.archers).forEach(([n,o])=>{
 if(!stats[n])stats[n]=[];
-stats[n].push(o.score);
+stats[n].push(o);
 });
 });
 
-let rows=Object.entries(stats).map(([n,s])=>{
-return {n,avg:Math.round(s.reduce((a,b)=>a+b)/s.length)};
-}).sort((a,b)=>b.avg-a.avg);
+let rows=Object.entries(stats).map(([n,a])=>{
 
-roster.innerHTML=rows.map(r=>`<tr><td>${r.n}</td><td>${r.avg}</td></tr>`).join("");
+let scores=a.map(x=>x.score);
+let avg=Math.round(scores.reduce((x,y)=>x+y)/scores.length);
+let pr=Math.max(...scores);
+let tens=a.reduce((x,y)=>x+y.tens,0);
+let variance=scores.reduce((x,y)=>x+(y-avg)**2,0)/scores.length;
+let consistency=Math.min(10,Math.round(variance/10));
+
+let current=selected?.archers[n]?.score ?? "-";
+
+return {n,avg,pr,tens,consistency,current,gender:a[0].gender};
+
+}).sort((a,b)=>b[sortKey]-a[sortKey]);
+
+roster.innerHTML=`
+<tr>
+<th onclick="sortRoster('n')">Name</th>
+<th onclick="sortRoster('current')">${selected?.tournament||"Score"}</th>
+<th onclick="sortRoster('avg')">Avg</th>
+<th onclick="sortRoster('pr')">PR</th>
+<th onclick="sortRoster('tens')">10s</th>
+<th onclick="sortRoster('consistency')">Cons</th>
+</tr>
+`+rows.map(r=>`
+<tr>
+<td class="${r.gender==='M'?'male':'female'}">${r.n}</td>
+<td>${r.current}</td>
+<td>${r.avg}</td>
+<td>${r.pr}</td>
+<td>${r.tens}</td>
+<td>${r.consistency}</td>
+</tr>`).join("");
 }
+
+function sortRoster(k){sortKey=k;buildRoster();}
 
 // START
 loadTeams();
@@ -288,7 +365,7 @@ loadTeams();
 </script>
 
 <script>
-if ('serviceWorker' in navigator) {
+if('serviceWorker' in navigator){
 navigator.serviceWorker.register('sw.js');
 }
 </script>
