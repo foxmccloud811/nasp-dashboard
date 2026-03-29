@@ -177,6 +177,11 @@ return;
 }
 
 await addDoc(collection(db,"season"),e);
+
+// 🔥 AUTO-CLEAR INPUTS (SAFE)
+if (typeof input !== "undefined") input.value = "";
+if (typeof eventDate !== "undefined") eventDate.value = "";
+
 loadData();
 }
 
