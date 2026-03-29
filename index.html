@@ -97,10 +97,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebas
 import { getFirestore, collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
+// ✅ REAL FIREBASE CONFIG (THIS FIXES LOGIN)
 const firebaseConfig = {
-apiKey: "YOUR_KEY",
-authDomain: "YOUR_DOMAIN",
-projectId: "YOUR_PROJECT"
+  apiKey: "AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
+  authDomain: "nasp-dashboard.firebaseapp.com",
+  projectId: "nasp-dashboard",
+  storageBucket: "nasp-dashboard.firebasestorage.app",
+  messagingSenderId: "355731537969",
+  appId: "1:355731537969:web:107b5a6646944101acd510"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -109,241 +113,255 @@ const auth = getAuth(app);
 
 let season=[];
 
+// 🔒 ADMIN CHECK
 function isCoach(user){
-return user && user.email==="william@sheppardfamily.net";
+  return user && user.email==="william@sheppardfamily.net";
 }
 
+// 🔐 LOGIN
 window.login=function(){
-signInWithEmailAndPassword(auth,email.value,password.value)
-.catch(()=>alert("Login failed"));
+  signInWithEmailAndPassword(auth,email.value,password.value)
+  .catch(()=>alert("Login failed"));
 }
 
+// 🔁 AUTH STATE
 onAuthStateChanged(auth,user=>{
-if(isCoach(user)){
-loginCard.style.display="none";
-adminPanel.style.display="block";
-dateEditor.style.display="block";
-}else{
-adminPanel.style.display="none";
-dateEditor.style.display="none";
-}
-loadData();
+  if(isCoach(user)){
+    loginCard.style.display="none";
+    adminPanel.style.display="block";
+    dateEditor.style.display="block";
+  }else{
+    adminPanel.style.display="none";
+    dateEditor.style.display="none";
+  }
+  loadData();
 });
 
+// 🏹 ADD TO SEASON
 async function process(){
 
-let lines=input.value.split("\n");
+  let lines=input.value.split("\n");
 
-let e={
-tournament:lines[0]||"Event",
-date: eventDate.value || new Date().toISOString(),
-teamScore:0,
-teamTens:0,
-archers:{}
-};
+  let e={
+    tournament:lines[0]||"Event",
+    date: eventDate.value || new Date().toISOString(),
+    teamScore:0,
+    teamTens:0,
+    archers:{}
+  };
 
-lines.forEach(l=>{
+  lines.forEach(l=>{
 
-if(l.includes("Team Score")){
-e.teamScore=parseInt(l.match(/\d+/)[0]);
-let t=l.match(/\((\d+)\)/);
-e.teamTens=t?+t[1]:0;
+    if(l.includes("Team Score")){
+      e.teamScore=parseInt(l.match(/\d+/)[0]);
+      let t=l.match(/\((\d+)\)/);
+      e.teamTens=t?+t[1]:0;
+    }
+
+    if(/^\d{2,3}/.test(l)){
+      let p=l.replace("(T)","").split(/\s+/);
+      let gi=p.findIndex(x=>x=="M"||x=="F");
+
+      if(gi<3) return;
+
+      let name=p.slice(2,gi-1).join(" ").trim();
+      if(!name) return;
+
+      let score=parseInt(p[0]);
+      if(isNaN(score)) return;
+
+      let tens=parseInt(p[1])||0;
+      let gender=p[gi];
+
+      e.archers[name]={score,tens,gender};
+    }
+
+  });
+
+  if(Object.keys(e.archers).length===0){
+    alert("No valid archers found — check paste");
+    return;
+  }
+
+  await addDoc(collection(db,"season"),e);
+
+  // 🔥 AUTO CLEAR (SAFE)
+  try{
+    document.getElementById("input").value="";
+    let d=document.getElementById("eventDate");
+    if(d) d.value="";
+  }catch(err){}
+
+  loadData();
 }
 
-if(/^\d{2,3}/.test(l)){
-let p=l.replace("(T)","").split(/\s+/);
-let gi=p.findIndex(x=>x=="M"||x=="F");
-
-if(gi<3) return;
-
-let name=p.slice(2,gi-1).join(" ").trim();
-if(!name) return;
-
-let score=parseInt(p[0]);
-if(isNaN(score)) return;
-
-let tens=parseInt(p[1])||0;
-let gender=p[gi];
-
-e.archers[name]={score,tens,gender};
-}
-
-});
-
-// 🚨 PREVENT FIREBASE ERROR
-if(Object.keys(e.archers).length===0){
-alert("No valid archers found — check paste");
-return;
-}
-
-await addDoc(collection(db,"season"),e);
-
-// 🔥 AUTO-CLEAR INPUTS (SAFE)
-if (typeof input !== "undefined") input.value = "";
-if (typeof eventDate !== "undefined") eventDate.value = "";
-
-loadData();
-}
-
+// 🔄 RESET
 async function resetData(){
-let s=await getDocs(collection(db,"season"));
-for(let d of s.docs){
-await deleteDoc(doc(db,"season",d.id));
-}
-loadData();
+  let s=await getDocs(collection(db,"season"));
+  for(let d of s.docs){
+    await deleteDoc(doc(db,"season",d.id));
+  }
+  loadData();
 }
 
+// 📥 LOAD DATA
 async function loadData(){
-season=[];
-let snap=await getDocs(collection(db,"season"));
+  season=[];
+  let snap=await getDocs(collection(db,"season"));
 
-snap.forEach(d=>{
-let data=d.data();
-data.id=d.id;
-season.push(data);
-});
+  snap.forEach(d=>{
+    let data=d.data();
+    data.id=d.id;
+    season.push(data);
+  });
 
-// 🔥 SORT BY DATE
-season.sort((a,b)=> new Date(a.date)-new Date(b.date));
+  season.sort((a,b)=> new Date(a.date)-new Date(b.date));
 
-build();
-buildDateEditor();
+  build();
+  buildDateEditor();
 }
 
+// 🧱 BUILD UI
 function build(){
 
-let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
-archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
+  let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
+  archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
 
-tournament.innerHTML=season.map((e,i)=>
-`<option value="${i}">${e.tournament}</option>`
-).join("");
+  tournament.innerHTML=season.map((e,i)=>
+    `<option value="${i}">${e.tournament}</option>`
+  ).join("");
 
-archer.onchange=update;
-tournament.onchange=update;
+  archer.onchange=update;
+  tournament.onchange=update;
 
-update();
-buildRoster();
+  update();
+  buildRoster();
 }
 
+// 🔄 UPDATE VIEW
 function update(){
 
-let name=archer.value;
-if(!name) return;
+  let name=archer.value;
+  if(!name) return;
 
-let scores=[],tens=[],labels=[];
+  let scores=[],tens=[],labels=[];
 
-season.forEach(e=>{
-if(e.archers[name]){
-scores.push(e.archers[name].score);
-tens.push(e.archers[name].tens);
-labels.push(e.tournament);
+  season.forEach(e=>{
+    if(e.archers[name]){
+      scores.push(e.archers[name].score);
+      tens.push(e.archers[name].tens);
+      labels.push(e.tournament);
+    }
+  });
+
+  if(!scores.length) return;
+
+  drawArcherChart(labels,scores,tens);
+
+  let e=season[tournament.value];
+  if(e){
+    teamStats.innerHTML=`Score ${e.teamScore} | 10s ${e.teamTens}`;
+  }
+
+  drawTeamChart();
 }
-});
 
-if(!scores.length) return;
-
-drawArcherChart(labels,scores,tens);
-
-let e=season[tournament.value];
-if(e){
-teamStats.innerHTML=`Score ${e.teamScore} | 10s ${e.teamTens}`;
-}
-
-drawTeamChart();
-}
-
+// 📈 ARCHER CHART
 function drawArcherChart(labels,scores,tens){
 
-if(window.aChart)aChart.destroy();
+  if(window.aChart)aChart.destroy();
 
-aChart=new Chart(archerChart,{
-data:{
-labels,
-datasets:[
-{
-type:'line',
-label:'Score',
-data:scores,
-borderWidth:3
-},
-{
-type:'bar',
-label:'10s',
-data:tens,
-backgroundColor:'white'
-}
-]
-}
-});
+  aChart=new Chart(archerChart,{
+    data:{
+      labels,
+      datasets:[
+        {
+          type:'line',
+          label:'Score',
+          data:scores,
+          borderWidth:3
+        },
+        {
+          type:'bar',
+          label:'10s',
+          data:tens,
+          backgroundColor:'white'
+        }
+      ]
+    }
+  });
 }
 
+// 📊 TEAM CHART
 function drawTeamChart(){
 
-if(window.tChart)tChart.destroy();
+  if(window.tChart)tChart.destroy();
 
-tChart=new Chart(teamChart,{
-type:'line',
-data:{
-labels:season.map(e=>e.tournament),
-datasets:[{
-label:'Team Score',
-data:season.map(e=>e.teamScore),
-borderWidth:3
-}]
-}
-});
+  tChart=new Chart(teamChart,{
+    type:'line',
+    data:{
+      labels:season.map(e=>e.tournament),
+      datasets:[{
+        label:'Team Score',
+        data:season.map(e=>e.teamScore),
+        borderWidth:3
+      }]
+    }
+  });
 }
 
+// 📋 ROSTER
 function buildRoster(){
 
-let stats={};
+  let stats={};
 
-season.forEach(e=>{
-Object.entries(e.archers).forEach(([n,o])=>{
-if(!stats[n])stats[n]=[];
-stats[n].push(o);
-});
-});
+  season.forEach(e=>{
+    Object.entries(e.archers).forEach(([n,o])=>{
+      if(!stats[n])stats[n]=[];
+      stats[n].push(o);
+    });
+  });
 
-let rows=Object.entries(stats).map(([n,a])=>{
-let scores=a.map(x=>x.score);
-let avg=Math.round(scores.reduce((x,y)=>x+y)/scores.length);
-let pr=Math.max(...scores);
-let tens=a.reduce((x,y)=>x+y.tens,0);
+  let rows=Object.entries(stats).map(([n,a])=>{
+    let scores=a.map(x=>x.score);
+    let avg=Math.round(scores.reduce((x,y)=>x+y)/scores.length);
+    let pr=Math.max(...scores);
+    let tens=a.reduce((x,y)=>x+y.tens,0);
 
-return {n,avg,pr,tens,gender:a[0].gender};
-}).sort((a,b)=>b.avg-a.avg);
+    return {n,avg,pr,tens,gender:a[0].gender};
+  }).sort((a,b)=>b.avg-a.avg);
 
-roster.innerHTML=`
-<tr><th>Name</th><th>Avg</th><th>PR</th><th>10s</th></tr>
-`+rows.map(r=>`
-<tr>
-<td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
-<td>${r.avg}</td>
-<td>${r.pr}</td>
-<td>${r.tens}</td>
-</tr>`).join("");
+  roster.innerHTML=`
+  <tr><th>Name</th><th>Avg</th><th>PR</th><th>10s</th></tr>
+  `+rows.map(r=>`
+  <tr>
+  <td class="${r.gender=='M'?'male':'female'}">${r.n}</td>
+  <td>${r.avg}</td>
+  <td>${r.pr}</td>
+  <td>${r.tens}</td>
+  </tr>`).join("");
 }
 
+// 📅 DATE EDITOR
 function buildDateEditor(){
 
-dateList.innerHTML="";
+  dateList.innerHTML="";
 
-season.forEach(e=>{
-dateList.innerHTML+=`
-<div style="margin-bottom:8px;">
-${e.tournament}
-<input type="date" value="${e.date?.slice(0,10)||''}"
-onchange="updateDate('${e.id}',this.value)">
-</div>
-`;
-});
+  season.forEach(e=>{
+    dateList.innerHTML+=`
+    <div style="margin-bottom:8px;">
+    ${e.tournament}
+    <input type="date" value="${e.date?.slice(0,10)||''}"
+    onchange="updateDate('${e.id}',this.value)">
+    </div>
+    `;
+  });
 }
 
+// 🛠 UPDATE DATE
 window.updateDate=async(id,date)=>{
-await updateDoc(doc(db,"season",id),{date});
-loadData();
+  await updateDoc(doc(db,"season",id),{date});
+  loadData();
 };
 
 </script>
