@@ -12,12 +12,7 @@
 body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
 .container{padding:12px;max-width:1100px;margin:auto;}
 
-.topbar{
-display:flex;
-justify-content:space-between;
-align-items:center;
-margin-bottom:10px;
-}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
 
 .card{background:#111;padding:14px;border-radius:12px;margin-bottom:12px;}
 .grid{display:grid;grid-template-columns:1fr;gap:12px;}
@@ -48,7 +43,6 @@ select{padding:6px;background:#000;color:white;border:1px solid #333;}
 
 <div class="container">
 
-<!-- 🔥 TOP BAR -->
 <div class="topbar">
 <h2>🏹 NASP Elite Dashboard</h2>
 
@@ -58,14 +52,12 @@ select{padding:6px;background:#000;color:white;border:1px solid #333;}
 </div>
 </div>
 
-<!-- LOGIN -->
 <div id="loginCard" class="card">
 <input id="email" placeholder="Email">
 <input id="password" type="password" placeholder="Password">
 <button onclick="login()">Coach Login</button>
 </div>
 
-<!-- ADMIN -->
 <div id="adminPanel" style="display:none;">
 <div class="card">
 <textarea id="input" placeholder="Paste NASP page"></textarea>
@@ -112,7 +104,6 @@ select{padding:6px;background:#000;color:white;border:1px solid #333;}
 
 <script>
 
-// 🔥 CONFIG
 const firebaseConfig={
 apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
 authDomain:"nasp-dashboard.firebaseapp.com",
@@ -127,7 +118,7 @@ const auth=firebase.auth();
 let season=[],currentTeam="default";
 let sortKey="avg",sortDir=-1;
 
-// 🔐 LOGIN
+// LOGIN
 function login(){
 auth.signInWithEmailAndPassword(email.value,password.value)
 .catch(()=>alert("Login failed"));
@@ -142,7 +133,7 @@ addTeamBtn.style.display="inline-block";
 loadTeams();
 });
 
-// 🏹 TEAM SYSTEM
+// TEAM SYSTEM
 function loadTeams(){
 db.collection("teams").get().then(s=>{
 let teams=[];
@@ -172,13 +163,13 @@ if(!name) return;
 db.collection("teams").doc(name).set({}).then(loadTeams);
 }
 
-// 🔄 RESET
+// RESET
 function resetSeason(){
 db.collection("teams").doc(currentTeam).collection("season")
 .get().then(s=>s.forEach(d=>d.ref.delete())).then(loadData);
 }
 
-// ➕ ADD TO SEASON
+// PROCESS
 function process(){
 
 let lines=input.value.split("\n");
@@ -220,7 +211,7 @@ return;
 db.collection("teams").doc(currentTeam).collection("season").add(e).then(loadData);
 }
 
-// 🔄 LOAD DATA
+// LOAD
 function loadData(){
 db.collection("teams").doc(currentTeam).collection("season").get().then(s=>{
 season=[];
@@ -229,7 +220,7 @@ build();
 });
 }
 
-// 🧠 BUILD UI
+// BUILD
 function build(){
 
 let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
@@ -253,7 +244,7 @@ buildTop12();
 buildInsights();
 }
 
-// 📊 ARCHER
+// ⭐ ARCHER CHART (PR FIX HERE)
 function update(){
 
 let name=archer.value;
@@ -269,26 +260,48 @@ labels.push(e.tournament);
 
 if(!scores.length)return;
 
+let pr=Math.max(...scores);
+
 if(window.aChart)aChart.destroy();
 
 aChart=new Chart(archerChart,{
 data:{
 labels,
 datasets:[
-{type:'line',label:'Score',data:scores,borderColor:'#6A0DAD'},
-{type:'bar',label:'10s',data:tens,backgroundColor:'white',yAxisID:'y1'}
+{
+type:'line',
+label:'Score',
+data:scores,
+borderColor:'#6A0DAD',
+
+// ⭐ GOLD PR DOT
+pointBackgroundColor:scores.map(s=>s===pr?'gold':'#6A0DAD'),
+pointRadius:scores.map(s=>s===pr?6:3),
+pointBorderWidth:scores.map(s=>s===pr?3:1),
+pointBorderColor:scores.map(s=>s===pr?'gold':'#6A0DAD'),
+
+tension:0.3
+},
+{
+type:'bar',
+label:'10s',
+data:tens,
+backgroundColor:'white',
+yAxisID:'y1'
+}
 ]
 },
 options:{
+plugins:{legend:{labels:{color:'white'}}},
 scales:{
-y:{title:{display:true,text:'Score'}},
-y1:{position:'right',grid:{drawOnChartArea:false}}
+y:{ticks:{color:'white'}},
+y1:{position:'right',grid:{drawOnChartArea:false},ticks:{color:'white'}}
 }
 }
 });
 }
 
-// 📊 TEAM
+// TEAM
 function drawTeam(){
 
 if(window.tChart)tChart.destroy();
@@ -305,9 +318,8 @@ let e=season[tournament.value];
 teamStats.innerHTML=e?`Score ${e.teamScore} | 10s ${e.teamTens}`:"";
 }
 
-// 🏆 TOP 12
+// TOP 12
 function buildTop12(){
-
 let mode=document.querySelector('input[name="mode"]:checked').value;
 let list=[];
 
@@ -330,19 +342,15 @@ list.sort((a,b)=>b.val-a.val);
 top12.innerHTML=list.slice(0,12).map((x,i)=>`${i+1}. ${x.name} - ${x.val}`).join("<br>");
 }
 
-// 🧠 INSIGHTS
+// INSIGHTS
 function buildInsights(){
 if(!season.length)return;
-
-let scores=Object.values(season.at(-1).archers).map(a=>a.score);
-let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
-
+let avg=Math.round(Object.values(season.at(-1).archers).reduce((a,b)=>a+b.score,0)/Object.keys(season.at(-1).archers).length);
 insight.innerHTML=avg>250?"🔥 Elite":"💪 Improving";
 }
 
-// 🏅 ROSTER
+// ROSTER (unchanged stable version)
 function buildRoster(){
-
 let sel=season[tournament.value];
 
 let stats={},tensMap={},genderMap={};
@@ -371,7 +379,7 @@ let cons=Math.min(10,Math.round(variance/50));
 return {n,avg,pr,cur,tens,cons,gender:genderMap[n]};
 });
 
-rows.sort((a,b)=> (b[sortKey]-a[sortKey])*sortDir);
+rows.sort((a,b)=>(b[sortKey]-a[sortKey])*sortDir);
 
 roster.innerHTML=`
 <tr>
@@ -403,7 +411,7 @@ else{sortKey=k;sortDir=-1;}
 buildRoster();
 }
 
-// 🚀 START
+// START
 loadTeams();
 
 </script>
