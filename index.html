@@ -10,13 +10,13 @@
 
 <style>
 body{
-background:#0a0a0a;
+background:#000;
 color:white;
 font-family:Arial;
 margin:0;
 }
 
-/* 🔥 FIXED BACKGROUND LOGO */
+/* 🔥 FULL LOGO (VISIBLE) */
 body::before{
 content:"";
 position:fixed;
@@ -24,15 +24,21 @@ top:0;
 left:0;
 width:100%;
 height:100%;
-background:
-linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)),
-url('https://raw.githubusercontent.com/foxmccloud811/nasp-dashboard/main/Cchieftain.jpeg');
-background-size:70%;
-background-repeat:no-repeat;
+background:url('https://raw.githubusercontent.com/foxmccloud811/nasp-dashboard/main/Cchieftain.jpeg');
+background-size:cover;
 background-position:center;
-opacity:0.25;
+opacity:1; /* 🔥 FULL */
 z-index:0;
 pointer-events:none;
+}
+
+/* 🔥 GLASS CARDS */
+.card{
+background:rgba(0,0,0,0.15); /* 🔥 15% */
+backdrop-filter:blur(10px);
+padding:14px;
+border-radius:12px;
+margin-bottom:12px;
 }
 
 .container{
@@ -48,13 +54,6 @@ display:flex;
 justify-content:space-between;
 align-items:center;
 margin-bottom:10px;
-}
-
-.card{
-background:#111;
-padding:14px;
-border-radius:12px;
-margin-bottom:12px;
 }
 
 .grid{
@@ -92,7 +91,6 @@ cursor:pointer;
 }
 
 th{
-background:#111;
 position:sticky;
 top:0;
 }
@@ -111,9 +109,9 @@ top:0;
 </div>
 
 <div id="loginCard" class="card">
-<input id="email" placeholder="Email">
-<input id="password" type="password" placeholder="Password">
-<button onclick="login()">Coach Login</button>
+<input id="email">
+<input id="password" type="password">
+<button onclick="login()">Login</button>
 </div>
 
 <div id="adminPanel" style="display:none;">
@@ -123,7 +121,7 @@ top:0;
 <button onclick="process()">ADD TO SEASON</button>
 <button onclick="resetSeason()">RESET</button>
 
-<h4>Edit Tournament Dates</h4>
+<h4>Edit Dates</h4>
 <div id="dateList"></div>
 </div>
 </div>
@@ -154,7 +152,6 @@ top:0;
 
 <script>
 
-// 🔥 FIREBASE
 firebase.initializeApp({
 apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
 authDomain:"nasp-dashboard.firebaseapp.com",
@@ -166,7 +163,6 @@ const auth=firebase.auth();
 
 let season=[],currentTeam="",sortKey="avg",sortDir=-1;
 
-// LOGIN
 function login(){
 auth.signInWithEmailAndPassword(email.value,password.value)
 .catch(()=>alert("Login failed"));
@@ -181,15 +177,14 @@ addTeamBtn.style.display="inline-block";
 loadTeams();
 });
 
-// TEAMS
 function loadTeams(){
 db.collection("teams").get().then(s=>{
 let teams=[];
 s.forEach(d=>{
 if(d.id!=="default") teams.push(d.id);
 });
-
 currentTeam=teams[0];
+
 teamSelect.innerHTML=teams.map(t=>`<option>${t}</option>`).join("");
 
 teamSelect.onchange=()=>{
@@ -201,16 +196,13 @@ loadData();
 });
 }
 
-// ADD TEAM
 function createTeam(){
 let name=prompt("Team name?");
 if(!name)return;
 db.collection("teams").doc(name).set({}).then(loadTeams);
 }
 
-// ADD DATA
 function process(){
-
 let lines=input.value.split("\n");
 
 let e={
@@ -251,7 +243,6 @@ loadData();
 });
 }
 
-// LOAD DATA
 function loadData(){
 db.collection("teams").doc(currentTeam).collection("season").get().then(s=>{
 season=[];
@@ -262,7 +253,6 @@ buildDateEditor();
 });
 }
 
-// BUILD
 function build(){
 
 let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
@@ -284,7 +274,6 @@ drawTeamChart();
 buildRoster();
 }
 
-// ARCHER CHART
 function update(){
 
 let name=archer.value;
@@ -327,11 +316,15 @@ yAxisID:'y1'
 },
 options:{
 scales:{
+y:{
+beginAtZero:false
+},
 y1:{
 position:'right',
+beginAtZero:true,
 ticks:{
 stepSize:1,
-precision:0
+callback:(v)=>Number.isInteger(v)?v:null
 }
 }
 }
@@ -342,7 +335,6 @@ let e=season[tournament.value];
 teamStats.innerHTML=e?`Score ${e.teamScore} | 10s ${e.teamTens}`:"";
 }
 
-// TEAM CHART
 function drawTeamChart(){
 if(window.tChart)tChart.destroy();
 
@@ -359,7 +351,6 @@ borderColor:'#6A0DAD'
 });
 }
 
-// ROSTER
 function buildRoster(){
 
 let sel=season[tournament.value];
@@ -422,7 +413,6 @@ sortDir*=-1;
 buildRoster();
 }
 
-// DATE EDITOR
 function buildDateEditor(){
 dateList.innerHTML="";
 season.forEach(e=>{
@@ -441,7 +431,6 @@ db.collection("teams").doc(currentTeam)
 .update({date}).then(loadData);
 }
 
-// RESET
 function resetSeason(){
 if(!confirm("Delete all data?"))return;
 
@@ -453,7 +442,6 @@ return batch.commit();
 }).then(loadData);
 }
 
-// START
 loadTeams();
 
 </script>
