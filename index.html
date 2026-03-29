@@ -16,18 +16,20 @@ font-family:Arial;
 margin:0;
 }
 
-/* 🔥 WATERMARK LOGO */
+/* 🔥 BACKGROUND LOGO */
 body::before{
 content:"";
 position:fixed;
-top:50%;
-left:50%;
-transform:translate(-50%,-50%);
-width:600px;
-height:600px;
-background:url('Cchieftain.jpeg') no-repeat center;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:
+linear-gradient(rgba(0,0,0,0.92), rgba(0,0,0,0.92)),
+url('https://raw.githubusercontent.com/foxmccloud811/nasp-dashboard/main/Cchieftain.jpeg');
 background-size:contain;
-opacity:0.08;
+background-repeat:no-repeat;
+background-position:center;
 z-index:0;
 pointer-events:none;
 }
@@ -135,18 +137,6 @@ background:#111;
 <canvas id="teamChart"></canvas>
 </div>
 
-<div class="card">
-<h3>Top 12</h3>
-<label><input type="radio" name="mode" value="season" checked onchange="buildTop12()"> Season</label>
-<label><input type="radio" name="mode" value="event" onchange="buildTop12()"> Tournament</label>
-<div id="top12"></div>
-</div>
-
-<div class="card">
-<h3>Coach Insights</h3>
-<div id="insight"></div>
-</div>
-
 </div>
 
 <div class="card">
@@ -158,7 +148,7 @@ background:#111;
 
 <script>
 
-// FIREBASE
+// FIREBASE CONFIG
 firebase.initializeApp({
 apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
 authDomain:"nasp-dashboard.firebaseapp.com",
@@ -211,13 +201,14 @@ loadData();
 });
 }
 
+// ADD TEAM
 function createTeam(){
 let name=prompt("Team name?");
 if(!name)return;
 db.collection("teams").doc(name).set({}).then(loadTeams);
 }
 
-// ADD
+// ADD DATA
 function process(){
 
 let lines=input.value.split("\n");
@@ -261,18 +252,26 @@ return;
 }
 
 db.collection("teams").doc(currentTeam).collection("season").add(e).then(()=>{
-input.value="";
+input.value=""; // ✅ auto clear
 eventDate.value="";
 loadData();
 });
 }
 
-// LOAD
+// LOAD DATA (🔥 FIXED)
 function loadData(){
 db.collection("teams").doc(currentTeam).collection("season").get().then(s=>{
 season=[];
-s.forEach(d=>season.push(d.data()));
-season.sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+s.forEach(d=>{
+season.push({
+...d.data(),
+id:d.id
+});
+});
+
+season.sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
+
 build();
 });
 }
@@ -285,16 +284,15 @@ let archers=[...new Set(season.flatMap(e=>Object.keys(e.archers)))].sort();
 archer.innerHTML=archers.map(a=>`<option>${a}</option>`).join("");
 tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</option>`).join("");
 
-archer.onchange=update;
-tournament.onchange=update;
+if(archers.length) archer.value=archers[0];
+if(season.length) tournament.value=0;
 
 update();
-buildTop12();
 buildRoster();
 drawTeamChart();
 }
 
-// ARCHER
+// ARCHER CHART
 function update(){
 
 let name=archer.value;
@@ -318,13 +316,15 @@ labels,
 datasets:[
 {
 type:'line',
+label:'Score',
 data:scores,
 borderColor:'#6A0DAD',
 pointBackgroundColor:scores.map(s=>s===pr?'gold':'#6A0DAD'),
-pointRadius:scores.map(s=>s===pr?7:3)
+pointRadius:scores.map(s=>s===pr?8:3)
 },
 {
 type:'bar',
+label:'10s',
 data:tens,
 backgroundColor:'white'
 }
@@ -336,7 +336,7 @@ let e=season[tournament.value];
 teamStats.innerHTML=e?`Score ${e.teamScore} | 10s ${e.teamTens}`:"";
 }
 
-// TEAM
+// TEAM CHART
 function drawTeamChart(){
 if(window.tChart)tChart.destroy();
 
@@ -344,12 +344,16 @@ tChart=new Chart(teamChart,{
 type:'line',
 data:{
 labels:season.map(e=>e.tournament),
-datasets:[{label:'Team Score',data:season.map(e=>e.teamScore),borderColor:'#6A0DAD'}]
+datasets:[{
+label:'Team Score',
+data:season.map(e=>e.teamScore),
+borderColor:'#6A0DAD'
+}]
 }
 });
 }
 
-// ROSTER FIXED
+// ROSTER
 function buildRoster(){
 
 let sel=season[tournament.value];
@@ -402,6 +406,18 @@ roster.innerHTML+=`
 <td>${r.cons}</td>
 </tr>`;
 });
+}
+
+// RESET
+function resetSeason(){
+if(!confirm("Delete all data?"))return;
+
+db.collection("teams").doc(currentTeam).collection("season").get()
+.then(s=>{
+let batch=db.batch();
+s.forEach(d=>batch.delete(d.ref));
+return batch.commit();
+}).then(loadData);
 }
 
 // START
