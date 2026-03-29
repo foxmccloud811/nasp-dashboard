@@ -16,7 +16,7 @@ font-family:Arial;
 margin:0;
 }
 
-/* 🔥 BACKGROUND LOGO */
+/* 🔥 FIXED BACKGROUND LOGO */
 body::before{
 content:"";
 position:fixed;
@@ -25,11 +25,12 @@ left:0;
 width:100%;
 height:100%;
 background:
-linear-gradient(rgba(0,0,0,0.92), rgba(0,0,0,0.92)),
+linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.85)),
 url('https://raw.githubusercontent.com/foxmccloud811/nasp-dashboard/main/Cchieftain.jpeg');
-background-size:contain;
+background-size:70%;
 background-repeat:no-repeat;
 background-position:center;
+opacity:0.25;
 z-index:0;
 pointer-events:none;
 }
@@ -87,11 +88,13 @@ border-collapse:collapse;
 th,td{
 padding:8px;
 border-bottom:1px solid #333;
-text-align:left;
+cursor:pointer;
 }
 
 th{
 background:#111;
+position:sticky;
+top:0;
 }
 </style>
 </head>
@@ -119,6 +122,9 @@ background:#111;
 <input type="date" id="eventDate">
 <button onclick="process()">ADD TO SEASON</button>
 <button onclick="resetSeason()">RESET</button>
+
+<h4>Edit Tournament Dates</h4>
+<div id="dateList"></div>
 </div>
 </div>
 
@@ -148,7 +154,7 @@ background:#111;
 
 <script>
 
-// FIREBASE CONFIG
+// 🔥 FIREBASE
 firebase.initializeApp({
 apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
 authDomain:"nasp-dashboard.firebaseapp.com",
@@ -158,7 +164,7 @@ projectId:"nasp-dashboard"
 const db=firebase.firestore();
 const auth=firebase.auth();
 
-let season=[],currentTeam="";
+let season=[],currentTeam="",sortKey="avg",sortDir=-1;
 
 // LOGIN
 function login(){
@@ -183,13 +189,7 @@ s.forEach(d=>{
 if(d.id!=="default") teams.push(d.id);
 });
 
-if(!teams.length){
-teams.push("Logan Hocking Elementary");
-db.collection("teams").doc(teams[0]).set({});
-}
-
 currentTeam=teams[0];
-
 teamSelect.innerHTML=teams.map(t=>`<option>${t}</option>`).join("");
 
 teamSelect.onchange=()=>{
@@ -234,45 +234,31 @@ let gi=p.findIndex(x=>x=="M"||x=="F");
 if(gi<3)return;
 
 let name=p.slice(2,gi-1).join(" ").trim();
-if(!name)return;
-
 let score=parseInt(p[0]);
-if(isNaN(score))return;
-
 let tens=parseInt(p[1])||0;
 let gender=p[gi];
 
+if(name && !isNaN(score)){
 e.archers[name]={score,tens,gender};
+}
 }
 });
 
-if(Object.keys(e.archers).length===0){
-alert("Bad paste");
-return;
-}
-
 db.collection("teams").doc(currentTeam).collection("season").add(e).then(()=>{
-input.value=""; // ✅ auto clear
+input.value="";
 eventDate.value="";
 loadData();
 });
 }
 
-// LOAD DATA (🔥 FIXED)
+// LOAD DATA
 function loadData(){
 db.collection("teams").doc(currentTeam).collection("season").get().then(s=>{
 season=[];
-
-s.forEach(d=>{
-season.push({
-...d.data(),
-id:d.id
-});
-});
-
+s.forEach(d=>season.push({...d.data(),id:d.id}));
 season.sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
-
 build();
+buildDateEditor();
 });
 }
 
@@ -287,15 +273,23 @@ tournament.innerHTML=season.map((e,i)=>`<option value="${i}">${e.tournament}</op
 if(archers.length) archer.value=archers[0];
 if(season.length) tournament.value=0;
 
+archer.onchange=update;
+tournament.onchange=()=>{
 update();
 buildRoster();
+};
+
+update();
 drawTeamChart();
+buildRoster();
 }
 
 // ARCHER CHART
 function update(){
 
 let name=archer.value;
+if(!name)return;
+
 let scores=[],tens=[],labels=[];
 
 season.forEach(e=>{
@@ -326,9 +320,21 @@ pointRadius:scores.map(s=>s===pr?8:3)
 type:'bar',
 label:'10s',
 data:tens,
-backgroundColor:'white'
+backgroundColor:'white',
+yAxisID:'y1'
 }
 ]
+},
+options:{
+scales:{
+y1:{
+position:'right',
+ticks:{
+stepSize:1,
+precision:0
+}
+}
+}
 }
 });
 
@@ -382,16 +388,18 @@ let variance=s.reduce((a,b)=>a+(b-avg)**2,0)/s.length;
 let cons=Math.min(10,Math.round(variance/50));
 
 return {n,avg,pr,cur,tens,cons,gender:genderMap[n]};
-}).sort((a,b)=>b.avg-a.avg);
+});
+
+rows.sort((a,b)=>(b[sortKey]-a[sortKey])*sortDir);
 
 roster.innerHTML=`
 <tr>
-<th>Name</th>
+<th onclick="setSort('n')">Name</th>
 <th>${sel?.tournament||'Score'}</th>
-<th>Avg</th>
-<th>PR</th>
-<th>10s</th>
-<th>Consistency</th>
+<th onclick="setSort('avg')">Avg</th>
+<th onclick="setSort('pr')">PR</th>
+<th onclick="setSort('tens')">10s</th>
+<th onclick="setSort('cons')">Consistency</th>
 </tr>
 `;
 
@@ -406,6 +414,31 @@ roster.innerHTML+=`
 <td>${r.cons}</td>
 </tr>`;
 });
+}
+
+function setSort(k){
+sortKey=k;
+sortDir*=-1;
+buildRoster();
+}
+
+// DATE EDITOR
+function buildDateEditor(){
+dateList.innerHTML="";
+season.forEach(e=>{
+dateList.innerHTML+=`
+<div>
+${e.tournament}
+<input type="date" value="${e.date?.slice(0,10)||''}"
+onchange="updateDate('${e.id}',this.value)">
+</div>`;
+});
+}
+
+window.updateDate=function(id,date){
+db.collection("teams").doc(currentTeam)
+.collection("season").doc(id)
+.update({date}).then(loadData);
 }
 
 // RESET
