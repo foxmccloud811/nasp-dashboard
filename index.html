@@ -2,26 +2,95 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 
 <style>
-body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
-.container{padding:12px;max-width:1100px;margin:auto;}
-.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
-.card{background:#111;padding:14px;border-radius:12px;margin-bottom:12px;}
-.grid{display:grid;grid-template-columns:1fr;gap:12px;}
-@media(min-width:800px){.grid{grid-template-columns:1fr 1fr;}}
-button{padding:8px;background:#6A0DAD;color:white;border:none;border-radius:8px;}
+body{
+background:#0a0a0a;
+color:white;
+font-family:Arial;
+margin:0;
+}
+
+/* 🔥 WATERMARK LOGO */
+body::before{
+content:"";
+position:fixed;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+width:600px;
+height:600px;
+background:url('Cchieftain.jpeg') no-repeat center;
+background-size:contain;
+opacity:0.08;
+z-index:0;
+pointer-events:none;
+}
+
+.container{
+position:relative;
+z-index:1;
+padding:12px;
+max-width:1100px;
+margin:auto;
+}
+
+.topbar{
+display:flex;
+justify-content:space-between;
+align-items:center;
+margin-bottom:10px;
+}
+
+.card{
+background:#111;
+padding:14px;
+border-radius:12px;
+margin-bottom:12px;
+}
+
+.grid{
+display:grid;
+grid-template-columns:1fr;
+gap:12px;
+}
+
+@media(min-width:800px){
+.grid{grid-template-columns:1fr 1fr;}
+}
+
+button{
+padding:8px;
+background:#6A0DAD;
+color:white;
+border:none;
+border-radius:8px;
+}
+
 textarea{width:100%;height:100px;}
+
 .male{color:#4da6ff;}
 .female{color:#ff66cc;}
-table{width:100%;border-collapse:collapse;}
-td,th{padding:8px;border-bottom:1px solid #333;}
-th{cursor:pointer;}
+
+table{
+width:100%;
+border-collapse:collapse;
+}
+
+th,td{
+padding:8px;
+border-bottom:1px solid #333;
+text-align:left;
+}
+
+th{
+background:#111;
+}
 </style>
 </head>
 
@@ -29,7 +98,7 @@ th{cursor:pointer;}
 <div class="container">
 
 <div class="topbar">
-<h2>🏹 NASP Elite Dashboard</h2>
+<h2>🏹 Logan Hocking Archery</h2>
 <div>
 <select id="teamSelect"></select>
 <button id="addTeamBtn" onclick="createTeam()" style="display:none;">+ Team</button>
@@ -89,7 +158,7 @@ th{cursor:pointer;}
 
 <script>
 
-// FIREBASE CONFIG
+// FIREBASE
 firebase.initializeApp({
 apiKey:"AIzaSyDLWNHjzpzHr58sEX-hDxetQhWygTabXFs",
 authDomain:"nasp-dashboard.firebaseapp.com",
@@ -99,7 +168,7 @@ projectId:"nasp-dashboard"
 const db=firebase.firestore();
 const auth=firebase.auth();
 
-let season=[],currentTeam="default";
+let season=[],currentTeam="";
 
 // LOGIN
 function login(){
@@ -120,15 +189,18 @@ loadTeams();
 function loadTeams(){
 db.collection("teams").get().then(s=>{
 let teams=[];
-s.forEach(d=>teams.push(d.id));
+s.forEach(d=>{
+if(d.id!=="default") teams.push(d.id);
+});
 
-if(!teams.includes("default")){
-db.collection("teams").doc("default").set({});
-teams.push("default");
+if(!teams.length){
+teams.push("Logan Hocking Elementary");
+db.collection("teams").doc(teams[0]).set({});
 }
 
+currentTeam=teams[0];
+
 teamSelect.innerHTML=teams.map(t=>`<option>${t}</option>`).join("");
-teamSelect.value=currentTeam;
 
 teamSelect.onchange=()=>{
 currentTeam=teamSelect.value;
@@ -147,6 +219,7 @@ db.collection("teams").doc(name).set({}).then(loadTeams);
 
 // ADD
 function process(){
+
 let lines=input.value.split("\n");
 
 let e={
@@ -194,12 +267,6 @@ loadData();
 });
 }
 
-// RESET
-function resetSeason(){
-db.collection("teams").doc(currentTeam).collection("season")
-.get().then(s=>s.forEach(d=>d.ref.delete())).then(loadData);
-}
-
 // LOAD
 function loadData(){
 db.collection("teams").doc(currentTeam).collection("season").get().then(s=>{
@@ -224,11 +291,10 @@ tournament.onchange=update;
 update();
 buildTop12();
 buildRoster();
-buildInsights();
 drawTeamChart();
 }
 
-// ARCHER CHART
+// ARCHER
 function update(){
 
 let name=archer.value;
@@ -242,8 +308,6 @@ labels.push(e.tournament);
 }
 });
 
-if(!scores.length)return;
-
 let pr=Math.max(...scores);
 
 if(window.aChart)aChart.destroy();
@@ -256,7 +320,8 @@ datasets:[
 type:'line',
 data:scores,
 borderColor:'#6A0DAD',
-pointBackgroundColor:scores.map(s=>s===pr?'gold':'#6A0DAD')
+pointBackgroundColor:scores.map(s=>s===pr?'gold':'#6A0DAD'),
+pointRadius:scores.map(s=>s===pr?7:3)
 },
 {
 type:'bar',
@@ -271,7 +336,7 @@ let e=season[tournament.value];
 teamStats.innerHTML=e?`Score ${e.teamScore} | 10s ${e.teamTens}`:"";
 }
 
-// TEAM CHART
+// TEAM
 function drawTeamChart(){
 if(window.tChart)tChart.destroy();
 
@@ -279,50 +344,26 @@ tChart=new Chart(teamChart,{
 type:'line',
 data:{
 labels:season.map(e=>e.tournament),
-datasets:[{data:season.map(e=>e.teamScore),borderColor:'#6A0DAD'}]
+datasets:[{label:'Team Score',data:season.map(e=>e.teamScore),borderColor:'#6A0DAD'}]
 }
 });
 }
 
-// TOP 12
-function buildTop12(){
-let mode=document.querySelector('input[name="mode"]:checked').value;
-let list=[];
-
-if(mode==="season"){
-let stats={};
-season.forEach(e=>{
-Object.entries(e.archers).forEach(([n,o])=>{
-if(!stats[n])stats[n]=[];
-stats[n].push(o.score);
-});
-});
-list=Object.entries(stats).map(([n,s])=>({n,val:Math.round(s.reduce((a,b)=>a+b)/s.length)}));
-}else{
-let e=season[tournament.value];
-list=Object.entries(e.archers).map(([n,o])=>({n,val:o.score}));
-}
-
-list.sort((a,b)=>b.val-a.val);
-top12.innerHTML=list.slice(0,12).map(x=>`${x.n} - ${x.val}`).join("<br>");
-}
-
-// INSIGHTS
-function buildInsights(){
-let scores=Object.values(season.at(-1)?.archers||{}).map(a=>a.score);
-let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length||0);
-insight.innerHTML=avg>250?"🔥 Elite":"💪 Improving";
-}
-
-// ROSTER
+// ROSTER FIXED
 function buildRoster(){
 
-let stats={},genderMap={};
+let sel=season[tournament.value];
+
+let stats={},tensMap={},genderMap={};
 
 season.forEach(e=>{
 Object.entries(e.archers).forEach(([n,o])=>{
 if(!stats[n])stats[n]=[];
 stats[n].push(o.score);
+
+if(!tensMap[n])tensMap[n]=0;
+tensMap[n]+=o.tens||0;
+
 if(!genderMap[n])genderMap[n]=o.gender;
 });
 });
@@ -330,22 +371,42 @@ if(!genderMap[n])genderMap[n]=o.gender;
 let rows=Object.entries(stats).map(([n,s])=>{
 let avg=Math.round(s.reduce((a,b)=>a+b)/s.length);
 let pr=Math.max(...s);
-return {n,avg,pr,gender:genderMap[n]};
+let cur=sel?.archers[n]?.score||"-";
+let tens=tensMap[n];
+
+let variance=s.reduce((a,b)=>a+(b-avg)**2,0)/s.length;
+let cons=Math.min(10,Math.round(variance/50));
+
+return {n,avg,pr,cur,tens,cons,gender:genderMap[n]};
 }).sort((a,b)=>b.avg-a.avg);
 
-roster.innerHTML=`<tr><th>Name</th><th>Avg</th><th>PR</th></tr>`+
-rows.map(r=>`
+roster.innerHTML=`
+<tr>
+<th>Name</th>
+<th>${sel?.tournament||'Score'}</th>
+<th>Avg</th>
+<th>PR</th>
+<th>10s</th>
+<th>Consistency</th>
+</tr>
+`;
+
+rows.forEach(r=>{
+roster.innerHTML+=`
 <tr>
 <td class="${r.gender==='M'?'male':'female'}">${r.n}</td>
+<td>${r.cur}</td>
 <td>${r.avg}</td>
 <td>${r.pr}</td>
-</tr>`).join("");
+<td>${r.tens}</td>
+<td>${r.cons}</td>
+</tr>`;
+});
 }
 
 // START
 loadTeams();
 
 </script>
-
 </body>
 </html>
