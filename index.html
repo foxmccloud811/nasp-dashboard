@@ -11,6 +11,7 @@
 <style>
 body{background:#0a0a0a;color:white;font-family:Arial;margin:0;}
 .container{padding:12px;max-width:1100px;margin:auto;}
+
 .card{background:#111;padding:14px;border-radius:12px;margin-bottom:12px;}
 .grid{display:grid;grid-template-columns:1fr;gap:12px;}
 @media(min-width:800px){.grid{grid-template-columns:1fr 1fr;}}
@@ -23,7 +24,17 @@ textarea{width:100%;height:100px;margin-bottom:10px;}
 
 table{width:100%;border-collapse:collapse;}
 td,th{padding:8px;border-bottom:1px solid #333;text-align:left;}
-th{color:#aaa;}
+
+th{
+color:#aaa;
+cursor:pointer;
+position:sticky;
+top:0;
+background:#111;
+z-index:2;
+}
+
+tr:hover{background:#1a1a1a;}
 </style>
 </head>
 
@@ -52,7 +63,6 @@ th{color:#aaa;}
 <div class="card">
 <h3>Archer</h3>
 <select id="archer"></select>
-<div id="profile"></div>
 <canvas id="archerChart"></canvas>
 </div>
 
@@ -98,11 +108,12 @@ const db=firebase.firestore();
 const auth=firebase.auth();
 
 let season=[],aChart,tChart;
+let sortKey="avg";
+let sortDir=-1;
 
 // LOGIN
 function login(){
 auth.signInWithEmailAndPassword(email.value,password.value)
-.then(()=>alert("Logged in"))
 .catch(()=>alert("Login failed"));
 }
 
@@ -195,7 +206,7 @@ buildTop12();
 buildInsights();
 }
 
-// ARCHER
+// ARCHER CHART
 function update(){
 
 let name=archer.value;
@@ -239,11 +250,7 @@ tChart=new Chart(teamChart,{
 type:'line',
 data:{
 labels:season.map(e=>e.tournament),
-datasets:[{
-label:'Team Score',
-data:season.map(e=>e.teamScore),
-borderColor:'#6A0DAD'
-}]
+datasets:[{label:'Team Score',data:season.map(e=>e.teamScore),borderColor:'#6A0DAD'}]
 }
 });
 
@@ -253,8 +260,6 @@ teamStats.innerHTML=e?`Score ${e.teamScore} | 10s ${e.teamTens}`:"";
 
 // TOP 12
 function buildTop12(){
-
-if(!season.length) return;
 
 let mode=document.querySelector('input[name="mode"]:checked').value;
 let list=[];
@@ -270,93 +275,87 @@ stats[n].push(o.score);
 list=Object.entries(stats).map(([n,s])=>({name:n,val:Math.round(s.reduce((a,b)=>a+b)/s.length)}));
 }else{
 let e=season[tournament.value];
-if(!e)return;
 list=Object.entries(e.archers).map(([n,o])=>({name:n,val:o.score}));
 }
 
 list.sort((a,b)=>b.val-a.val);
 
-top12.innerHTML=list.slice(0,12)
-.map((x,i)=>`${i+1}. ${x.name} - ${x.val}`)
-.join("<br>");
+top12.innerHTML=list.slice(0,12).map((x,i)=>`${i+1}. ${x.name} - ${x.val}`).join("<br>");
 }
 
 // INSIGHTS
 function buildInsights(){
-
-if(!season.length) return;
-
 let latest=season.at(-1);
-let scores=Object.values(latest.archers).map(a=>a.score);
+if(!latest)return;
 
+let scores=Object.values(latest.archers).map(a=>a.score);
 let avg=Math.round(scores.reduce((a,b)=>a+b)/scores.length);
 
-let text="";
-
-if(avg>260) text+="🔥 Elite performance<br>";
-else if(avg>240) text+="💪 Strong showing<br>";
-else text+="📈 Room to improve<br>";
-
-let max=Math.max(...scores);
-let min=Math.min(...scores);
-
-if(max-min>50) text+="⚠️ Large spread<br>";
-else text+="🎯 Tight grouping<br>";
-
-insight.innerHTML=text;
+insight.innerHTML = avg>250 ? "🔥 Elite" : "💪 Improving";
 }
 
-// ROSTER (FIXED GENDER)
+// 🏆 ROSTER (SORTABLE + STICKY)
 function buildRoster(){
 
 let sel=season[tournament.value];
 
-roster.innerHTML=`
-<tr>
-<th>Name</th>
-<th>${sel?.tournament || "Score"}</th>
-<th>Avg</th>
-<th>PR</th>
-</tr>
-`;
-
-let stats={};
-let genderMap={};
+let stats={},tensMap={},genderMap={};
 
 season.forEach(e=>{
 Object.entries(e.archers).forEach(([n,o])=>{
 if(!stats[n])stats[n]=[];
 stats[n].push(o.score);
 
-// ✅ STORE GENDER ONCE (CORRECT)
-if(!genderMap[n] && o.gender){
-genderMap[n]=o.gender;
-}
+if(!tensMap[n])tensMap[n]=0;
+tensMap[n]+=o.tens||0;
+
+if(!genderMap[n])genderMap[n]=o.gender;
 });
 });
 
-Object.entries(stats)
-.sort((a,b)=>{
-let avgA=a[1].reduce((x,y)=>x+y)/a[1].length;
-let avgB=b[1].reduce((x,y)=>x+y)/b[1].length;
-return avgB-avgA;
-})
-.forEach(([n,s])=>{
-
+let rows=Object.entries(stats).map(([n,s])=>{
 let avg=Math.round(s.reduce((a,b)=>a+b)/s.length);
 let pr=Math.max(...s);
-let cur=sel?.archers[n]?.score||"-";
+let cur=sel?.archers[n]?.score||0;
+let tens=tensMap[n];
 
-let gender=genderMap[n];
+let variance=s.reduce((a,b)=>a+(b-avg)**2,0)/s.length;
+let cons=Math.min(10,Math.round(variance/50));
 
+return {n,avg,pr,cur,tens,cons,gender:genderMap[n]};
+});
+
+// SORT
+rows.sort((a,b)=> (b[sortKey]-a[sortKey])*sortDir);
+
+roster.innerHTML=`
+<tr>
+<th onclick="setSort('n')">Name</th>
+<th onclick="setSort('cur')">${sel?.tournament||'Score'}</th>
+<th onclick="setSort('avg')">Avg</th>
+<th onclick="setSort('pr')">PR</th>
+<th onclick="setSort('tens')">10s</th>
+<th onclick="setSort('cons')">Consistency</th>
+</tr>
+`;
+
+rows.forEach(r=>{
 roster.innerHTML+=`
 <tr>
-<td class="${gender==='M'?'male':'female'}">${n}</td>
-<td>${cur}</td>
-<td>${avg}</td>
-<td>${pr}</td>
+<td class="${r.gender==='M'?'male':'female'}">${r.n}</td>
+<td>${r.cur||"-"}</td>
+<td>${r.avg}</td>
+<td>${r.pr}</td>
+<td>${r.tens}</td>
+<td>${r.cons}</td>
 </tr>`;
 });
+}
+
+function setSort(k){
+if(sortKey===k) sortDir*=-1;
+else{sortKey=k;sortDir=-1;}
+buildRoster();
 }
 
 loadData();
